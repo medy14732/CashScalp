@@ -3,6 +3,7 @@ CashScalp - application de bureau.
 Démarre un petit serveur local et ouvre l'interface dans une fenêtre d'application Edge.
 Le serveur s'arrête tout seul quand la fenêtre est fermée.
 """
+import hashlib
 import json
 import re
 import os
@@ -35,6 +36,10 @@ PORT = 8765
 RAPPORTS = os.path.join(ICI, "rapports")
 JOURNAL = os.path.join(ICI, "erreurs.log")
 FAVORIS = os.path.join(ICI, "favoris.json")
+SURVEILLANCES = os.path.join(ICI, "surveillances.json")
+VEILLE = os.path.join(ICI, "veille")          # articles déjà vus, un dossier par recherche surveillée
+INTERVALLE_VEILLE = 30 * 60                   # s entre deux passages
+TACHE = "CashScalp veille"                     # tâche Windows : vérifie même appli fermée
 DELAI_SANS_FENETRE = 150      # s sans signal de la page avant arrêt
 
 ACC_INFO, ACC_JEUX = "220-accessoires-informatique", "219-accessoires-jeux-video"
@@ -277,38 +282,41 @@ def lancer_job(params):
     return jid
 
 
+def parametres_recherche(p):
+    """Paramètres de l'interface (zone, cat, q, pmax…) -> arguments de cs.rechercher."""
+    zone = p.get("zone", "ARLON")
+    if zone.startswith("region:"):
+        region = zone.split(":", 1)[1]
+        magasins, nom_zone = cs.REGIONS[region], region
+    elif zone == "tous":
+        magasins, nom_zone = [], "tous"
+    else:
+        magasins, nom_zone = [cs.trouver_magasin(zone)], zone
+    cle = p.get("cat", "2-categories")
+    virt = VIRTUELLES.get(cle)
+    if re.fullmatch(r"\d+-[a-z0-9-]+", cle):        # catégorie du site, telle quelle
+        cat, filtres = cle, {}
+    elif virt:
+        cat, filtres = virt["bases"], {"motif": virt["motif"], "sans": virt["sans"], "nom_cat": virt["nom"]}
+    else:
+        cat = cs.CATEGORIES.get(cle) or cs.CATEGORIES["tout"]
+        filtres = {}
+
+    def nombre(cle):
+        v = (p.get(cle) or "").replace(",", ".").replace("€", "").strip()
+        return float(v) if v else None
+    return dict(magasins=magasins, cat=cat, zone=nom_zone, mots=(p.get("q") or "").strip() or None,
+                prix_min=nombre("pmin"), prix_max=nombre("pmax"), verbeux=False, **filtres)
+
+
 def travail(jid, p):
     job = jobs[jid]
 
     def progres(msg, frac):
         job["message"], job["progression"] = msg, round(frac, 3)
     try:
-        zone = p.get("zone", "ARLON")
-        if zone.startswith("region:"):
-            region = zone.split(":", 1)[1]
-            magasins, nom_zone = cs.REGIONS[region], region
-        elif zone == "tous":
-            magasins, nom_zone = [], "tous"
-        else:
-            magasins, nom_zone = [cs.trouver_magasin(zone)], zone
-        cle = p.get("cat", "2-categories")
-        virt = VIRTUELLES.get(cle)
-        if re.fullmatch(r"\d+-[a-z0-9-]+", cle):        # catégorie du site, telle quelle
-            cat, filtres = cle, {}
-        elif virt:
-            cat, filtres = virt["bases"], {"motif": virt["motif"], "sans": virt["sans"], "nom_cat": virt["nom"]}
-        else:
-            cat = cs.CATEGORIES.get(cle) or cs.CATEGORIES["tout"]
-            filtres = {}
-
-        def nombre(cle):
-            v = (p.get(cle) or "").replace(",", ".").replace("€", "").strip()
-            return float(v) if v else None
-
-        produits, base, premier = cs.rechercher(
-            magasins, cat, nom_zone, mots=(p.get("q") or "").strip() or None,
-            prix_min=nombre("pmin"), prix_max=nombre("pmax"),
-            nouveaux=p.get("nouveaux") == "1", sortie=RAPPORTS, progres=progres, verbeux=False, **filtres)
+        produits, base, premier = cs.rechercher(**parametres_recherche(p), nouveaux=p.get("nouveaux") == "1",
+                                                sortie=RAPPORTS, progres=progres)
         for x in produits:
             produits_connus[x["id"]] = x
             if x["id"] in estimations:
@@ -373,6 +381,163 @@ def lot(jid, depuis=0):
             "resultats": [{"id": i, "resume": estimations[i]["resume"]} for i in faits if i in estimations]}
 
 
+# --------------------------------------------------------------------------- surveillance
+verrou_surv = threading.Lock()
+verrou_passage = threading.Lock()
+
+
+def lire_surveillances():
+    try:
+        with open(SURVEILLANCES, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
+def ecrire_surveillances(liste):
+    tmp = SURVEILLANCES + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(liste, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, SURVEILLANCES)
+
+
+def maj_surveillance(sid, **champs):
+    with verrou_surv:
+        liste = lire_surveillances()
+        for s in liste:
+            if s["id"] == sid:
+                s.update(champs)
+        ecrire_surveillances(liste)
+
+
+def ajouter_surveillance(q):
+    params = {k: (q.get(k) or "").strip() for k in ("zone", "cat", "q", "pmax")}
+    sid = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:10]
+    with verrou_surv:
+        liste = lire_surveillances()
+        if not any(s["id"] == sid for s in liste):
+            liste.insert(0, {"id": sid, "nom": (q.get("nom") or "Ma recherche").strip()[:80], "params": params,
+                             "cree_le": time.strftime("%Y-%m-%d %H:%M"), "verifie_le": None, "alertes": []})
+            ecrire_surveillances(liste)
+    planifier_tache(True)
+    threading.Thread(target=passage_veille, args=([sid],), daemon=True).start()   # 1er passage : mémorise l'existant
+    return lire_surveillances()
+
+
+def retirer_surveillance(sid):
+    with verrou_surv:
+        liste = [s for s in lire_surveillances() if s["id"] != sid]
+        ecrire_surveillances(liste)
+    shutil.rmtree(os.path.join(VEILLE, sid), ignore_errors=True)
+    if not liste:
+        planifier_tache(False)
+    return liste
+
+
+def verifier_surveillance(s):
+    """Relance la recherche ; renvoie les nouveaux articles qui sont de bonnes affaires."""
+    dossier = os.path.join(VEILLE, s["id"])
+    produits, base, premier = cs.rechercher(**parametres_recherche(s["params"]), sortie=dossier)
+    for ext in (".csv", ".html"):                 # pas de rapport à garder pour la veille
+        try:
+            os.remove(base + ext)
+        except OSError:
+            pass
+    bons = []
+    for p in produits:
+        if premier or not p["nouveau"]:
+            continue
+        produits_connus.setdefault(p["id"], p)
+        try:
+            r = resume_estimation(estimation.estimer(p, complet=False))
+        except Exception:
+            journaliser(traceback.format_exc())
+            continue
+        if r.get("note") in ("excellent", "bon"):
+            bons.append({"id": p["id"], "nom": p["nom"], "prix": p["prix"], "url": p["url"], "image": p.get("image"),
+                         "magasin": p.get("magasin"), "note": r["note"], "gain": r.get("gain"),
+                         "vu_le": time.strftime("%Y-%m-%d %H:%M")})
+    return bons
+
+
+def passage_veille(ids=None):
+    """Vérifie les recherches surveillées (toutes, ou seulement `ids`) et prévient s'il y a du neuf."""
+    if not verrou_passage.acquire(blocking=False):
+        return
+    try:
+        for s in lire_surveillances():
+            if ids and s["id"] not in ids:
+                continue
+            try:
+                bons = verifier_surveillance(s)
+            except Exception:
+                journaliser(traceback.format_exc())
+                continue
+            actuelle = next((x for x in lire_surveillances() if x["id"] == s["id"]), None)
+            if not actuelle:                       # retirée pendant le passage
+                continue
+            maj_surveillance(s["id"], verifie_le=time.strftime("%Y-%m-%d %H:%M"),
+                             alertes=(bons + actuelle.get("alertes", []))[:20])
+            if bons:
+                meilleur = max(bons, key=lambda b: b.get("gain") or 0)
+                titre = f"CashScalp · {len(bons)} bon{'s' if len(bons) > 1 else ''} plan{'s' if len(bons) > 1 else ''} : {s['nom']}"
+                prix = f"{meilleur['prix']:.2f}".replace(".", ",").replace(",00", "")
+                texte = f"{meilleur['nom'][:90]} à {prix} €"
+                if meilleur.get("gain"):
+                    texte += f" ({meilleur['gain']:+.0f} € vs marché)"
+                notifier(titre, texte, meilleur["url"])
+    finally:
+        verrou_passage.release()
+
+
+def boucle_veille():
+    while True:
+        time.sleep(INTERVALLE_VEILLE)
+        if lire_surveillances():
+            passage_veille()
+
+
+def notifier(titre, texte, lien):
+    """Notification Windows (clic = ouvre l'article sur le site)."""
+    def x(t):
+        return (str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace('"', "&quot;"))
+    xml = (f'<toast activationType="protocol" launch="{x(lien)}"><visual><binding template="ToastGeneric">'
+           f'<text>{x(titre)}</text><text>{x(texte)}</text></binding></visual></toast>')
+    journaliser("veille : " + titre + " | " + texte)
+    if os.name != "nt":
+        return
+    ps = ("[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;"
+          "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null;"
+          "$x = New-Object Windows.Data.Xml.Dom.XmlDocument; $x.LoadXml($env:CASHSCALP_TOAST);"
+          "$t = New-Object Windows.UI.Notifications.ToastNotification $x;"
+          "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+          "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($t)")
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], timeout=30,
+                       env={**os.environ, "CASHSCALP_TOAST": xml}, creationflags=0x08000000)
+    except Exception:
+        journaliser(traceback.format_exc())
+
+
+def planifier_tache(active):
+    """Tâche Windows qui lance la veille toutes les 30 min, même quand l'appli est fermée."""
+    if os.name != "nt":
+        return
+    try:
+        if active:
+            exe = sys.executable
+            w = os.path.join(os.path.dirname(exe), "pythonw.exe")
+            exe = w if os.path.exists(w) else exe
+            cmd = ["schtasks", "/Create", "/F", "/SC", "MINUTE", "/MO", str(INTERVALLE_VEILLE // 60), "/TN", TACHE,
+                   "/TR", f'"{exe}" "{os.path.abspath(__file__)}" --veille']
+        else:
+            cmd = ["schtasks", "/Delete", "/F", "/TN", TACHE]
+        subprocess.run(cmd, capture_output=True, timeout=30, creationflags=0x08000000)
+    except Exception:
+        journaliser(traceback.format_exc())
+
+
 # --------------------------------------------------------------------------- HTTP
 class Gestionnaire(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -431,6 +596,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return self._envoyer(200, retirer_favori(q.get("id", "")))
             if u.path == "/api/favoris_verifier":
                 return self._envoyer(200, verifier_favoris())
+            if u.path == "/api/surveillances":
+                return self._envoyer(200, lire_surveillances())
+            if u.path == "/api/surveiller":
+                return self._envoyer(200, ajouter_surveillance(q))
+            if u.path == "/api/surveillance_retirer":
+                return self._envoyer(200, retirer_surveillance(q.get("id", "")))
             if u.path == "/api/rapport":
                 job = jobs.get(q.get("id", ""))
                 if job and job.get("rapport") and os.path.exists(job["rapport"]):
@@ -487,6 +658,10 @@ def surveiller(serveur):
 
 def main():
     url = f"http://127.0.0.1:{PORT}/"
+    if "--veille" in sys.argv:          # lancé par la tâche Windows
+        if not deja_lance(url):         # appli ouverte : c'est elle qui fait la veille
+            passage_veille()
+        return
     if deja_lance(url):
         ouvrir_fenetre(url)
         return
@@ -494,6 +669,7 @@ def main():
         produits_connus.setdefault(f["id"], f)
     serveur = ThreadingHTTPServer(("127.0.0.1", PORT), Gestionnaire)
     threading.Thread(target=surveiller, args=(serveur,), daemon=True).start()
+    threading.Thread(target=boucle_veille, daemon=True).start()
     if "--sans-fenetre" not in sys.argv:
         ouvrir_fenetre(url)
     serveur.serve_forever()
