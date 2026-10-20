@@ -26,6 +26,7 @@ import time
 import unicodedata
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 BASE = "https://www.cashconverters.be/fr"
@@ -61,6 +62,7 @@ REGIONS = {
 # Catégories principales (id-slug). La liste complète : --lister-categories
 CATEGORIES = {
     "tout": "2-categories",
+    "nouveautes": "nouveaux-produits",      # page « Les nouveautés » du site
     "outillage-jardinage": "126-outillage-jardinage",
     "outillage": "127-outillage",
     "jardinage": "166-jardinage",
@@ -167,7 +169,7 @@ def lire(reponse):
     return corps.decode("utf-8", "replace")
 
 
-def get(url, json_attendu=True, essais=3):
+def get(url, json_attendu=True, essais=3, delai_max=30):
     entetes = {"User-Agent": UA, "Accept-Language": "fr-BE,fr;q=0.9", "Accept-Encoding": "gzip"}
     if json_attendu:
         entetes["Accept"] = "application/json, text/javascript, */*; q=0.01"
@@ -175,7 +177,7 @@ def get(url, json_attendu=True, essais=3):
     for n in range(essais):
         try:
             req = urllib.request.Request(url, headers=entetes)
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=delai_max) as r:
                 corps = lire(r)
             time.sleep(DELAI)
             return json.loads(corps) if json_attendu else corps
@@ -217,6 +219,12 @@ def magasins_depuis_html(rendu):
         if mm:
             res[mm.group(1)] = html.unescape(mm.group(2)).strip()
     return res
+
+
+def badges_nouveau(rendu):
+    """id_product des articles qui portent le badge « Nouveau » du site."""
+    return {m.group(1) for m in re.finditer(r'data-id-product="(\d+)"(.*?)(?=<article |$)', rendu, re.S)
+            if 'product-flag new' in m.group(2)}
 
 
 def nom_complet(p):
@@ -268,11 +276,15 @@ def scraper(categorie_slug, magasins, tri=None, maximum=None, verbeux=True, prog
         return tous[:maximum] if maximum else tous
     produits, page = [], 1
     while True:
-        d = get(url_liste(categorie_slug, magasins, page, tri, recherche))
+        # la page « Les nouveautés » du site met souvent plus de 30 s à répondre
+        d = get(url_liste(categorie_slug, magasins, page, tri, recherche),
+                delai_max=90 if categorie_slug == CATEGORIES["nouveautes"] else 30)
         noms_mag = magasins_depuis_html(d.get("rendered_products", ""))
+        neufs = badges_nouveau(d.get("rendered_products", ""))
         for p in d.get("products", []):
             mag = noms_mag.get(str(p["id_product"]), magasins[0] if len(magasins) == 1 else "?")
             produits.append(produit_vers_dict(p, mag))
+            produits[-1]["nouveau_site"] = str(p["id_product"]) in neufs
         pag = d.get("pagination", {})
         total, nb_pages = pag.get("total_items", 0), pag.get("pages_count", 1)
         if progres:
@@ -515,22 +527,38 @@ def rechercher(magasins, cat, zone, mots=None, exclure=None, prix_min=None, prix
     # (la rubrique entière d'un magasin dépasse souvent le délai du site). Le moteur ignore
     # le filtre magasin : on filtre ensuite sur le magasin de chaque article.
     recherche = mots if (mots and cat == CATEGORIES["tout"]) else None
+    # « Nouveautés » : la page du site ignore le filtre magasin. Pour un magasin, on parcourt
+    # donc ses rubriques et on garde les articles qui portent le badge « Nouveau » du site.
+    seulement_badge = False
+    if cat == CATEGORIES["nouveautes"]:
+        nom_cat = nom_cat or "nouveautes"
+        if magasins:
+            cat, seulement_badge = [c["slug"] for c in categories_du_site()], True
+        else:
+            args.max = args.max or 300     # tout le réseau : les 300 plus récentes suffisent
     if isinstance(cat, (list, tuple)):
-        produits, vus_ids = [], set()
-        for i, c in enumerate(cat):
-            def prog(msg, frac, i=i):
-                if progres:
-                    progres(f"Rubrique {i + 1}/{len(cat)} · {msg}", (i + frac) / len(cat))
-            for p in scraper(c, magasins, maximum=args.max, verbeux=verbeux, progres=prog):
-                if p["id"] not in vus_ids:
-                    vus_ids.add(p["id"])
-                    produits.append(p)
+        produits, vus_ids, finies = [], set(), [0]
+
+        def une(c):
+            res = scraper(c, magasins, maximum=args.max, verbeux=False)
+            finies[0] += 1
+            if progres:
+                progres(f"Rubrique {finies[0]}/{len(cat)}", finies[0] / len(cat))
+            return res
+        with ThreadPoolExecutor(4) as pool:            # 4 rubriques à la fois
+            for res in pool.map(une, cat):
+                for p in res:
+                    if p["id"] not in vus_ids:
+                        vus_ids.add(p["id"])
+                        produits.append(p)
     else:
         produits = scraper(cat, magasins, maximum=None if recherche else args.max,
                            verbeux=verbeux, progres=progres, recherche=recherche)
         if recherche and magasins:
             voulus = {m.lower() for m in magasins}
             produits = [p for p in produits if p["magasin"].lower() in voulus][:args.max]
+    if seulement_badge:
+        produits = [p for p in produits if p["nouveau_site"]]
     if motif:
         produits = [p for p in produits if re.search(motif, plat(p["nom"]))]
     if sans:
