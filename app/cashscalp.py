@@ -511,8 +511,10 @@ def rechercher(magasins, cat, zone, mots=None, exclure=None, prix_min=None, prix
     args.max_comparaisons, args.nouveaux, args.sortie = max_comparaisons, nouveaux, sortie
 
     os.makedirs(args.sortie, exist_ok=True)
-    # Tous les magasins + un produit précis : le moteur du site évite de tout télécharger
-    recherche = mots if (mots and not magasins and cat == CATEGORIES["tout"]) else None
+    # Toutes catégories + un produit précis : le moteur du site évite de tout télécharger
+    # (la rubrique entière d'un magasin dépasse souvent le délai du site). Le moteur ignore
+    # le filtre magasin : on filtre ensuite sur le magasin de chaque article.
+    recherche = mots if (mots and cat == CATEGORIES["tout"]) else None
     if isinstance(cat, (list, tuple)):
         produits, vus_ids = [], set()
         for i, c in enumerate(cat):
@@ -524,8 +526,11 @@ def rechercher(magasins, cat, zone, mots=None, exclure=None, prix_min=None, prix
                     vus_ids.add(p["id"])
                     produits.append(p)
     else:
-        produits = scraper(cat, magasins, maximum=args.max, verbeux=verbeux, progres=progres,
-                           recherche=recherche)
+        produits = scraper(cat, magasins, maximum=None if recherche else args.max,
+                           verbeux=verbeux, progres=progres, recherche=recherche)
+        if recherche and magasins:
+            voulus = {m.lower() for m in magasins}
+            produits = [p for p in produits if p["magasin"].lower() in voulus][:args.max]
     if motif:
         produits = [p for p in produits if re.search(motif, plat(p["nom"]))]
     if sans:
