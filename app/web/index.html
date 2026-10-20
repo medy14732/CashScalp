@@ -537,7 +537,12 @@ $("#pop").onclick = e => {
   const x = e.target.closest("[data-retirer]");
   if (x) return retirerSurveillance(x.dataset.retirer);
   const o = e.target.closest(".onglet");
-  if (o) { groupeOuvert = o.dataset.groupe; return dessinerCats(); }
+  if (o) {
+    groupeOuvert = o.dataset.groupe;
+    const seul = META.categories.find(x => x.groupe === groupeOuvert).items;
+    if (seul.length === 1) { $("#cat").value = seul[0].cle; majChoix(); ecrirePrefs(); return fermerPanneau(); }  // ex. « Nouveautés » : un clic suffit
+    return dessinerCats();
+  }
   const c = e.target.closest("[data-cat]");
   if (c) { $("#cat").value = c.dataset.cat; majChoix(); ecrirePrefs(); return fermerPanneau(); }
   const z = e.target.closest("[data-zone]");
