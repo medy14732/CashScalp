@@ -32,7 +32,7 @@ header{position:sticky;top:0;z-index:5;background:linear-gradient(#0b0b0b 85%,#0
 form{display:grid;grid-template-columns:1.1fr 1.2fr 1.6fr .6fr auto;gap:10px;background:var(--panel);
   padding:14px;border-radius:var(--r);border:1px solid var(--line)}
 label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--mut);font-weight:700;letter-spacing:.3px}
-select,input[type=text],input[type=password]{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;outline:none;min-width:0}
+select,input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;outline:none;min-width:0}
 select:focus,input:focus{border-color:var(--orange)}
 optgroup{color:var(--orange);background:var(--panel2)} option{color:var(--txt)}
 .go{align-self:end;background:var(--orange);color:#111;border:0;border-radius:16px;padding:11px 26px;font-weight:800;
@@ -227,23 +227,6 @@ header{position:sticky}
 .carte.vendue{opacity:.55} .carte.vendue .vignette img{filter:grayscale(1)}
 .btn.fav{background:var(--panel2);color:var(--txt);border:1px solid var(--line);cursor:pointer;font:inherit;font-weight:900}
 .btn.fav.on{background:#ff5d7a;border-color:#ff5d7a;color:#fff}
-/* ---------- avis de Claude ---------- */
-.btn.ia{background:var(--panel2);color:var(--txt);border:1px solid var(--line);cursor:pointer;font:inherit;font-weight:900}
-.btn.ia:hover{border-color:#d97757;color:#f0a987} .btn.ia:disabled{opacity:.6;cursor:wait}
-.avis .tete-avis{display:flex;align-items:center;gap:12px;margin-bottom:8px}
-.avis .pastille{border-radius:999px;padding:6px 14px;font-weight:900;font-size:15px}
-.avis .acheter{background:#2fbf71;color:#08140d} .avis .negocier{background:#ffcf7a;color:#1b1406} .avis .eviter{background:#ff6b6b;color:#1c0707}
-.avis .raison{font-size:15px;line-height:1.45}
-.avis ul{margin:10px 0 0;padding-left:18px;color:var(--mut);font-size:13px;display:grid;gap:4px}
-.avis .bas{margin-top:10px;font-size:12px;color:var(--mut2);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.avis .bas button{background:none;border:0;color:var(--mut);cursor:pointer;font:inherit;text-decoration:underline;padding:0}
-.voile-cle{position:fixed;inset:0;background:#000a;z-index:30;display:grid;place-items:center;padding:16px}
-.voile-cle[hidden]{display:none}
-.boite-cle{background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:22px;width:min(480px,100%);display:grid;gap:12px}
-.boite-cle h3{margin:0;color:var(--orange)} .boite-cle p{margin:0;color:var(--mut);font-size:13px;line-height:1.5}
-.boite-cle a{color:var(--orange2)} .boite-cle input{width:100%;box-sizing:border-box}
-.boite-cle .ligne{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
-.boite-cle .etat{font-size:13px;font-weight:700}
 /* ---------- animations (discrètes) ---------- */
 @property --p{syntax:"<number>";inherits:false;initial-value:0}
 @keyframes fondu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -328,7 +311,7 @@ h1,h2,h3,.prix,.gros-prix,.t{letter-spacing:-.01em}
 .champ,label{font-size:12.5px;font-weight:600;letter-spacing:0;color:#a9a9a9}
 .choix .tx{font-weight:600;font-size:14px}
 .choix .tx small{font-size:11px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--mut)}
-select,input[type=text],input[type=password]{font-weight:500;font-size:14px}
+select,input[type=text]{font-weight:500;font-size:14px}
 input::placeholder{color:#6f6f6f;font-weight:500}
 .go{font-weight:700;letter-spacing:.1px}
 .options label{font-weight:500;color:#a9a9a9}
@@ -416,7 +399,6 @@ input::placeholder{color:#6f6f6f;font-weight:500}
     <div class="gauche"><img src="/logo.png" alt="">
     <div><h1>Cash<span>Scalp</span></h1><p>Les bonnes affaires Cash Converters, avec le gain estimé</p></div></div>
     <div class="droite"><button type="button" class="btn-favoris btn-veille" id="btn-veille" title="Recherches surveillées"><span class="c">🔔</span><span class="lbl">Surveillées</span><span class="n" id="nb-veille" hidden>0</span></button>
-    <button type="button" class="rond-btn" id="btn-reglages" title="Réglages (clé API pour l'avis de Claude)">⚙</button>
     <button type="button" class="rond-btn plein" id="btn-plein" title="Plein écran (F11)">⛶</button>
     <button type="button" class="btn-favoris" id="btn-favoris" title="Voir mes favoris"><span class="c">♥</span>Favoris<span class="n" id="nb-fav" hidden>0</span></button></div>
   </div>
@@ -462,18 +444,6 @@ input::placeholder{color:#6f6f6f;font-weight:500}
 </main>
 
 <div class="voile" id="voile"><div class="fiche" id="fiche"></div></div>
-<div class="voile-cle" id="voile-cle" hidden><div class="boite-cle">
-  <h3>🤖 Avis de Claude : clé API</h3>
-  <p>Colle ici ta clé API Anthropic (elle commence par <b>sk-ant-</b>). Tu la crées sur
-    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
-    Elle reste sur ce PC.</p>
-  <p>L'API est facturée à part de ton abonnement Claude : quelques centimes par avis, seulement quand tu cliques.</p>
-  <div class="etat" id="cle-etat"></div>
-  <input type="password" id="cle-champ" placeholder="sk-ant-…" autocomplete="off">
-  <div class="ligne"><button type="button" class="petit" id="cle-effacer">Effacer la clé</button>
-    <button type="button" class="petit" id="cle-annuler">Fermer</button>
-    <button type="button" class="go" id="cle-ok">Enregistrer</button></div>
-</div></div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -958,9 +928,7 @@ function dessinerFiche(){
       <div id="specs"></div>
       <div id="vendeur"></div>
       <div id="estim"></div>
-      <div id="avis"></div>
       <div class="actions">
-        <button type="button" class="btn ia" id="btn-avis">🤖 Avis de Claude</button>
         <a class="btn" href="${esc(p.url)}" target="_blank" rel="noopener">Voir sur Cash Converters ↗</a>
         <button type="button" class="btn fav" id="btn-fav"></button>
       </div>
@@ -968,7 +936,6 @@ function dessinerFiche(){
     </div>`;
   $("#fiche .fermer").onclick = fermerFiche;
   $("#btn-fav").onclick = () => basculerFavori(p.id); majBoutonFiche();
-  $("#btn-avis").onclick = () => demanderAvis(p.id); dessinerAvis(p.id);
   $("#fiche .nav.g").onclick = () => naviguer(-1);
   $("#fiche .nav.d").onclick = () => naviguer(1);
   remplirEstimation(p);
@@ -1109,72 +1076,9 @@ function blocComposants(p, c){
   </div>`;
 }
 
-// ---------- avis de Claude (sur demande : chaque avis est facturé sur la clé API) ----------
-const avisIA = {};
-const VERDICTS = {acheter: "✅ Acheter", negocier: "🤝 Négocier", eviter: "⛔ À éviter"};
-const CONFIANCE = {faible: "confiance faible", moyenne: "confiance moyenne", elevee: "confiance élevée"};
-function dessinerAvis(id){
-  if (ficheId !== id || !$("#avis")) return;
-  const a = avisIA[id], b = $("#btn-avis");
-  b.disabled = a === "calcul";
-  b.textContent = a === "calcul" ? "🤖 Claude réfléchit…" : "🤖 Avis de Claude";
-  b.hidden = !!(a && a !== "calcul" && !a.erreur);
-  if (!a) { $("#avis").innerHTML = ""; return; }
-  if (a === "calcul") { $("#avis").innerHTML = `<div class="section avis"><h3>Avis de Claude</h3><div class="charge"><div class="rond"></div>Claude analyse l'annonce et les prix…</div></div>`; return; }
-  if (a.erreur) { $("#avis").innerHTML = `<div class="section avis"><h3>Avis de Claude</h3><div class="raison neg">${esc(a.erreur)}</div></div>`; return; }
-  const extra = [a.prix_cible != null && a.verdict === "negocier" ? `Propose environ <b>${eur(a.prix_cible)}</b>` : "",
-                 a.revente != null ? `Revente réaliste : <b>${eur(a.revente)}</b>` : ""].filter(Boolean).join(" · ");
-  $("#avis").innerHTML = `<div class="section avis"><h3>Avis de Claude <small>${esc(CONFIANCE[a.confiance] || "")}</small></h3>
-    <div class="tete-avis"><span class="pastille ${esc(a.verdict)}">${VERDICTS[a.verdict] || esc(a.verdict)}</span></div>
-    <div class="raison">${esc(a.raison)}</div>
-    ${extra ? `<div class="raison" style="margin-top:6px">${extra}</div>` : ""}
-    ${(a.points || []).length ? `<ul>${a.points.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
-    <div class="bas"><span>Coût de cet avis : ~${(a.cout_usd ?? 0).toFixed(3)} $</span><button type="button" id="avis-relancer">Redemander</button></div>
-  </div>`;
-  $("#avis-relancer").onclick = () => demanderAvis(id, true);
-}
-async function demanderAvis(id, relancer = false){
-  if (avisIA[id] === "calcul") return;
-  avisIA[id] = "calcul"; dessinerAvis(id);
-  try {
-    const r = await fetch(`/api/avis?id=${encodeURIComponent(id)}${relancer ? "&relancer=1" : ""}`);
-    const d = await r.json();
-    if (r.status === 403 && d.cle) { delete avisIA[id]; dessinerAvis(id); ouvrirReglages(d.erreur, id); return; }
-    avisIA[id] = r.ok ? d : {erreur: d.erreur || "Erreur inconnue"};
-  } catch { avisIA[id] = {erreur: "Le moteur de l'application ne répond pas."}; }
-  dessinerAvis(id);
-}
-let avisEnAttente = null;
-async function ouvrirReglages(message, idAvis){
-  avisEnAttente = idAvis || null;
-  $("#cle-champ").value = "";
-  let e = {}; try { e = await (await fetch("/api/cle")).json(); } catch {}
-  $("#cle-etat").innerHTML = message ? `<span class="neg">${esc(message)}</span>`
-    : e.configuree ? `<span class="pos">Clé enregistrée (${esc(e.apercu)})</span>` : `<span style="color:var(--mut)">Aucune clé enregistrée</span>`;
-  $("#voile-cle").hidden = false; $("#cle-champ").focus();
-}
-function fermerReglages(){ $("#voile-cle").hidden = true; }
-async function enregistrerCle(cle){
-  const r = await fetch("/api/cle", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({cle})});
-  const d = await r.json();
-  if (!r.ok) { $("#cle-etat").innerHTML = `<span class="neg">${esc(d.erreur)}</span>`; return false; }
-  return true;
-}
-$("#btn-reglages").onclick = () => ouvrirReglages();
-$("#cle-annuler").onclick = fermerReglages;
-$("#voile-cle").onclick = e => { if (e.target.id === "voile-cle") fermerReglages(); };
-$("#cle-effacer").onclick = async () => { if (await enregistrerCle("")) ouvrirReglages(); };
-$("#cle-ok").onclick = async () => {
-  const v = $("#cle-champ").value.trim(); if (!v) return;
-  if (!(await enregistrerCle(v))) return;
-  fermerReglages();
-  if (avisEnAttente && avisEnAttente === ficheId) demanderAvis(avisEnAttente);
-};
-$("#cle-champ").onkeydown = e => { if (e.key === "Enter") $("#cle-ok").click(); };
-
 $("#voile").onclick = e => { if (e.target.id === "voile") fermerFiche(); };
 document.addEventListener("keydown", e => {
-  if (!ficheId || !$("#voile-cle").hidden) return;
+  if (!ficheId) return;
   if (e.key === "Escape") fermerFiche();
   if (e.key === "ArrowLeft") naviguer(-1);
   if (e.key === "ArrowRight") naviguer(1);
