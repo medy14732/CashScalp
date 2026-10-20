@@ -173,8 +173,8 @@ def categories_ui():
     """Le panneau « Quoi ? » reprend exactement les catégories du site Cash Converters."""
     global _categories_ui
     if _categories_ui is None:
-        groupes = [{"groupe": "Tout", "icone": "✨", "items": [{"cle": "2-categories", "nom": "Toutes les catégories", "icone": "✨"},
-                                                                {"cle": "nouveautes", "nom": "Nouveautés du site", "icone": "🆕"}]}]
+        groupes = [{"groupe": "Tout", "icone": "✨", "items": [{"cle": "2-categories", "nom": "Toutes les catégories", "icone": "✨"}]},
+                   {"groupe": "Nouveautés", "icone": "🆕", "items": [{"cle": "nouveautes", "nom": "Nouveautés du site", "icone": "🆕"}]}]
         for c in cs.categories_du_site():
             ic = ICONES_CAT.get(c["slug"].split("-")[0], "📦")
             items = [{"cle": c["slug"], "nom": "Tout : " + c["nom"], "icone": ic}]
