@@ -348,12 +348,48 @@ input::placeholder{color:#6f6f6f;font-weight:500}
 .tchoix,.onglet,.region-tete{font-weight:600}
 .pmag{font-weight:500}
 .segments button{font-weight:600}
+/* ---------- bons plans, vue liste, surveillance ---------- */
+.petit.bascule.actif{background:var(--vert);border-color:var(--vert);color:#062}
+.petit.fait{border-color:var(--vert);color:var(--vert);cursor:default}
+.gain.revente i{font-style:normal;color:#d6d6d6;font-weight:700}
+.corps .badges{display:none}
+.vue-liste .grille{grid-template-columns:1fr;gap:8px}
+.vue-liste .carte{flex-direction:row;align-items:center;border-radius:16px}
+.vue-liste .carte:hover{transform:none}
+.vue-liste .vignette{width:84px;flex:none;align-self:stretch;aspect-ratio:auto;min-height:84px}
+.vue-liste .vignette .badges{display:none}
+.vue-liste .coeur{width:28px;height:28px;font-size:15px;top:4px;right:4px}
+.vue-liste .corps{display:grid;grid-template-columns:120px minmax(0,1fr) 190px 270px;grid-template-areas:"prix titre lieu gain" "prix bdg lieu gain";
+  align-items:center;column-gap:16px;row-gap:4px;padding:8px 14px}
+.vue-liste .prix{grid-area:prix;font-size:19px}
+.vue-liste .titre{grid-area:titre;min-height:0;-webkit-line-clamp:1}
+.vue-liste .corps .badges{grid-area:bdg;display:flex}
+.vue-liste .corps .b{font-size:10px;padding:2px 8px;box-shadow:none}
+.vue-liste .lieu{grid-area:lieu;flex-direction:column;align-items:flex-start;gap:2px}
+.vue-liste .gain{grid-area:gain;margin:0}
+.btn-veille .c{color:inherit;font-size:14px}
+.btn-veille:hover{border-color:var(--orange);color:var(--orange)}
+.btn-veille .n{background:var(--orange);color:#111}
+.pop-veille{display:flex;flex-direction:column;gap:10px}
+.pop-veille .intro{color:var(--mut);font-size:13px}
+.surv{background:var(--panel2);border:1px solid var(--line);border-radius:18px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.surv .tete{display:flex;align-items:center;gap:10px}
+.surv .tete b{flex:1;font-weight:700}
+.surv .tete small{color:var(--mut);font-size:12px}
+.surv .alerte{display:flex;align-items:center;gap:10px;text-decoration:none;background:var(--panel3);border-radius:12px;padding:6px 10px;font-size:13px;border:1px solid transparent}
+.surv .alerte:hover{border-color:var(--orange)}
+.surv .alerte img{width:36px;height:36px;object-fit:contain;background:#fff;border-radius:8px}
+.surv .alerte span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.surv .alerte b{color:var(--orange)} .surv .alerte em{font-style:normal;color:var(--vert);font-weight:700}
+.surv .rien{color:var(--mut);font-size:12px}
 @media (max-width:900px){ .pop-cats{grid-template-columns:1fr} .onglets{flex-direction:row;flex-wrap:wrap} #pop{left:16px;right:16px} }
 @media (max-width:900px){
   form{grid-template-columns:1fr 1fr} .go{grid-column:1/-1;justify-content:center}
   .fiche{grid-template-columns:1fr} .galerie{position:static} .infos{padding:0 20px 24px}
   header,main{padding-left:16px;padding-right:16px}
   .comp{grid-template-columns:36px minmax(0,1fr) 76px 76px}
+  .btn-veille .lbl{display:none}
+  .vue-liste .corps{grid-template-columns:1fr;grid-template-areas:"prix" "titre" "bdg" "lieu" "gain"}
 }
 </style>
 </head>
@@ -362,7 +398,8 @@ input::placeholder{color:#6f6f6f;font-weight:500}
   <div class="marque">
     <div class="gauche"><img src="/logo.png" alt="">
     <div><h1>Cash<span>Scalp</span></h1><p>Les bonnes affaires Cash Converters, avec le gain estimé</p></div></div>
-    <div class="droite"><button type="button" class="rond-btn plein" id="btn-plein" title="Plein écran (F11)">⛶</button>
+    <div class="droite"><button type="button" class="btn-favoris btn-veille" id="btn-veille" title="Recherches surveillées"><span class="c">🔔</span><span class="lbl">Surveillées</span><span class="n" id="nb-veille" hidden>0</span></button>
+    <button type="button" class="rond-btn plein" id="btn-plein" title="Plein écran (F11)">⛶</button>
     <button type="button" class="btn-favoris" id="btn-favoris" title="Voir mes favoris"><span class="c">♥</span>Favoris<span class="n" id="nb-fav" hidden>0</span></button></div>
   </div>
   <form id="form">
@@ -384,11 +421,15 @@ input::placeholder{color:#6f6f6f;font-weight:500}
       <label class="filtre-local"><span>⌕</span><input type="text" id="filtre" placeholder="Filtrer ces résultats"></label>
       <div class="segments" id="segments" role="tablist" aria-label="Trier">
         <button type="button" data-tri="affaire">Meilleures affaires</button>
+        <button type="button" data-tri="gain">Plus gros gain €</button>
         <button type="button" data-tri="pa">Prix ↑</button>
         <button type="button" data-tri="pd">Prix ↓</button>
         <button type="button" data-tri="nouveau">Nouveautés</button>
       </div>
       <input type="hidden" id="tri" value="affaire">
+      <button type="button" class="petit bascule" id="bons" title="Cacher les articles plus chers que le marché ou sans référence">✓ Bons plans seulement</button>
+      <button type="button" class="rond-btn" id="vue" title="Vue liste compacte">☰</button>
+      <button type="button" class="petit" id="surveiller" title="Recevoir une notification Windows quand un nouveau bon plan apparaît pour cette recherche">🔔 Surveiller</button>
       <button class="petit" id="plus" type="button" hidden>Calculer tous les gains</button>
       <button class="rond-btn" id="rapport" type="button" title="Exporter la liste (page avec photos + tableur CSV)">⤓</button>
     </div>
@@ -428,7 +469,8 @@ let produits = [], jobId = null, estims = {}, ficheId = null;
 // ---------- préférences (confort local seulement) ----------
 function lirePrefs(){ try { return JSON.parse(localStorage.getItem("cashscalp") || "{}"); } catch { return {}; } }
 function ecrirePrefs(){ try { localStorage.setItem("cashscalp", JSON.stringify({zone: $("#zone").value, cat: $("#cat").value,
-  q: $("#q").value, pmax: $("#pmax").value, auto: $("#auto").checked, tri: $("#tri").value})); } catch {} }
+  q: $("#q").value, pmax: $("#pmax").value, auto: $("#auto").checked, tri: $("#tri").value,
+  bons: $("#bons").classList.contains("actif"), liste: document.body.classList.contains("vue-liste")})); } catch {} }
 
 // ---------- sélecteurs visuels (où ? / quoi ?) ----------
 let META = null;
@@ -456,7 +498,7 @@ function ouvrirPanneau(type){
   if (pop.dataset.type === type && !pop.hidden) return fermerPanneau();
   pop.dataset.type = type; pop.hidden = false;
   document.querySelectorAll(".choix").forEach(b => b.classList.toggle("ouvert", b.id === "choix-" + type));
-  type === "cat" ? dessinerCats() : dessinerZones("");
+  type === "cat" ? dessinerCats() : type === "veille" ? dessinerVeille() : dessinerZones("");
 }
 function fermerPanneau(){ $("#pop").hidden = true; $("#pop").dataset.type = ""; document.querySelectorAll(".choix").forEach(b => b.classList.remove("ouvert")); }
 
@@ -492,6 +534,8 @@ function dessinerZones(filtre){
 $("#choix-zone").onclick = () => ouvrirPanneau("zone");
 $("#choix-cat").onclick = () => ouvrirPanneau("cat");
 $("#pop").onclick = e => {
+  const x = e.target.closest("[data-retirer]");
+  if (x) return retirerSurveillance(x.dataset.retirer);
   const o = e.target.closest(".onglet");
   if (o) { groupeOuvert = o.dataset.groupe; return dessinerCats(); }
   const c = e.target.closest("[data-cat]");
@@ -499,7 +543,7 @@ $("#pop").onclick = e => {
   const z = e.target.closest("[data-zone]");
   if (z) { $("#zone").value = z.dataset.zone; majChoix(); ecrirePrefs(); return fermerPanneau(); }
 };
-document.addEventListener("click", e => { if (document.contains(e.target) && !e.target.closest("#pop, .choix")) fermerPanneau(); });
+document.addEventListener("click", e => { if (document.contains(e.target) && !e.target.closest("#pop, .choix, #btn-veille")) fermerPanneau(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#pop").hidden) fermerPanneau(); });
 
 async function init(){
@@ -514,7 +558,9 @@ async function init(){
   const voulu = cats.includes(p.cat) ? p.cat : anciens[p.cat];
   $("#cat").value = cats.includes(voulu) ? voulu : "2-categories";
   $("#q").value = p.q || ""; $("#pmax").value = p.pmax || "";
-  $("#auto").checked = p.auto !== false; $("#tri").value = ["affaire", "pa", "pd", "nouveau"].includes(p.tri) ? p.tri : "affaire";
+  $("#auto").checked = p.auto !== false; $("#tri").value = ["affaire", "gain", "pa", "pd", "nouveau"].includes(p.tri) ? p.tri : "affaire";
+  $("#bons").classList.toggle("actif", !!p.bons);
+  document.body.classList.toggle("vue-liste", !!p.liste); majBoutonVue();
   majSegments();
   majChoix();
 }
@@ -527,6 +573,8 @@ $("#form").onsubmit = async e => {
   $("#msg").textContent = "Connexion à cashconverters.be…"; lotJob = null;
   const params = new URLSearchParams({zone: $("#zone").value, cat: $("#cat").value, q: $("#q").value,
     pmax: $("#pmax").value, nouveaux: $("#nouveaux").checked ? "1" : "0"});
+  derniereRecherche = {zone: $("#zone").value, cat: $("#cat").value, q: $("#q").value.trim(), pmax: $("#pmax").value.trim()};
+  majBoutonSurveiller();
   try { jobId = (await (await fetch("/api/recherche?" + params)).json()).job; suivre(); }
   catch { fin("Impossible de joindre le moteur de l'application. Relance CashScalp."); }
 };
@@ -556,13 +604,18 @@ function valeurAffaire(p){
 function liste(){
   const f = $("#filtre").value.toLowerCase().trim();
   let l = produits.filter(p => !f || (p.nom + " " + p.magasin).toLowerCase().includes(f));
+  if (bonsSeulement()) l = l.filter(estBonPlan);
   const t = $("#tri").value;
+  const g = p => resume(p.id)?.gain ?? -Infinity;
   if (t === "pa") l.sort((a, b) => a.prix - b.prix);
   else if (t === "pd") l.sort((a, b) => b.prix - a.prix);
+  else if (t === "gain") l.sort((a, b) => g(b) - g(a) || valeurAffaire(b) - valeurAffaire(a));
   else if (t === "nouveau") l.sort((a, b) => (b.nouveau - a.nouveau) || valeurAffaire(b) - valeurAffaire(a));
   else l.sort((a, b) => valeurAffaire(b) - valeurAffaire(a));
   return l;
 }
+const bonsSeulement = () => $("#bons").classList.contains("actif");
+function estBonPlan(p){ const r = resume(p.id); return !!r && r.gain != null && r.gain >= 1 && r.note !== "cher"; }
 function badges(p){
   let h = "";
   if (p.nouveau) h += `<span class="b nouveau">NOUVEAU</span>`;
@@ -583,6 +636,14 @@ function ligneGain(p){
   const valeur = nul ? "au prix du marché" : neg ? `${eur(-r.gain)} plus cher` : `${eur(r.gain)} d'économie`;
   return `<div class="gain ${neg ? "neg" : nul ? "" : "pos"}"><span>${VS[r.base] || ""}</span><b>${valeur}</b></div>`;
 }
+function ligneRevente(p){
+  const r = resume(p.id);
+  if (!r || r.base !== "occasion" || !r.ref) return "";
+  const m = r.gain, neg = m < 0, nul = Math.abs(m) < 1;
+  const marge = nul ? "pas de marge" : neg ? `−${eur(Math.round(-m))} perte` : `+${eur(Math.round(m))} marge`;
+  return `<div class="gain revente ${neg ? "neg" : nul ? "" : "pos"}" title="Prix d'occasion habituel de ce modèle : ce que tu peux espérer en le revendant">
+    <span>Revente ≈ <i>${eur(r.ref)}</i></span><b>${marge}</b></div>`;
+}
 function carte(p, i = 0){
   return `<article class="carte ${p.etat === "vendu" ? "vendue" : ""}" data-id="${esc(p.id)}" style="--i:${Math.min(i, 24)}">
     <div class="vignette"><img loading="lazy" src="${esc(p.image)}" alt=""><div class="badges">${etatFavori(p)}${badges(p)}</div>${coeur(p)}</div>
@@ -590,7 +651,8 @@ function carte(p, i = 0){
       <div class="prix">${eur(p.prix)}${p.remise_pct > 0 ? `<s>${eur(p.prix_normal)}</s>` : ""}</div>
       <div class="titre">${esc(p.nom)}</div>
       <div class="lieu"><span class="mag"><i>📍</i>${esc(joli(p.magasin))}</span><span class="catg">${esc(majuscule(p.categorie))}</span></div>
-      ${ligneGain(p)}
+      <div class="badges">${etatFavori(p)}${badges(p)}</div>
+      ${ligneRevente(p) || ligneGain(p)}
     </div></article>`;
 }
 let minuterieApparition = null;
@@ -625,6 +687,59 @@ $("#segments").onclick = e => {
   $("#tri").value = b.dataset.tri; majSegments(); ecrirePrefs(); afficher(true);
 };
 $("#plus").onclick = lancerLot;
+$("#bons").onclick = () => { $("#bons").classList.toggle("actif"); ecrirePrefs(); afficher(true); };
+function majBoutonVue(){
+  const l = document.body.classList.contains("vue-liste");
+  $("#vue").textContent = l ? "▦" : "☰"; $("#vue").title = l ? "Vue en grille" : "Vue liste compacte";
+}
+$("#vue").onclick = () => { document.body.classList.toggle("vue-liste"); majBoutonVue(); ecrirePrefs(); afficher(true); };
+
+// ---------- surveillance ----------
+let derniereRecherche = null, surveillances = [];
+const idSurv = r => JSON.stringify([r.zone, r.cat, r.q, r.pmax]);
+function poserSurveillances(l){
+  surveillances = l;
+  $("#nb-veille").textContent = l.length; $("#nb-veille").hidden = !l.length;
+  majBoutonSurveiller();
+  if ($("#pop").dataset.type === "veille" && !$("#pop").hidden) dessinerVeille();
+}
+async function chargerSurveillances(){ try { poserSurveillances(await (await fetch("/api/surveillances")).json()); } catch {} }
+function majBoutonSurveiller(){
+  const b = $("#surveiller"), r = derniereRecherche;
+  const deja = r && surveillances.some(s => idSurv(s.params) === idSurv(r));
+  b.hidden = !r || vueFavoris; b.classList.toggle("fait", !!deja);
+  b.textContent = deja ? "🔔 Surveillée" : "🔔 Surveiller";
+}
+function nomRecherche(r){
+  const z = infoZone(r.zone)[1], c = infoCat(r.cat)[1];
+  return [r.q ? `« ${r.q} »` : c, z, r.pmax ? `≤ ${r.pmax} €` : ""].filter(Boolean).join(" · ");
+}
+$("#surveiller").onclick = async () => {
+  const r = derniereRecherche;
+  if (!r || $("#surveiller").classList.contains("fait")) return;
+  try {
+    poserSurveillances(await (await fetch("/api/surveiller?" + new URLSearchParams({...r, nom: nomRecherche(r)}))).json());
+    $("#msg").textContent = "🔔 Recherche surveillée : je vérifie toutes les 30 min et je t'envoie une notification Windows dès qu'un nouveau bon plan apparaît.";
+  } catch { $("#msg").textContent = "Impossible d'ajouter la surveillance pour l'instant."; }
+};
+async function retirerSurveillance(id){
+  try { poserSurveillances(await (await fetch("/api/surveillance_retirer?id=" + encodeURIComponent(id))).json()); } catch {}
+}
+function dessinerVeille(){
+  const l = surveillances;
+  $("#pop").innerHTML = `<div class="pop-veille">
+    <div class="intro">${l.length ? "Je relance ces recherches toutes les 30 min, même appli fermée, et je t'envoie une notification Windows pour chaque nouveau bon plan."
+      : "Aucune recherche surveillée. Lance une recherche puis clique sur « 🔔 Surveiller »."}</div>
+    ${l.map(s => `<div class="surv">
+      <div class="tete"><b>${esc(s.nom)}</b><small>${s.verifie_le ? "vérifiée le " + esc(s.verifie_le) : "première vérification en cours…"}</small>
+        <button type="button" class="rond-btn" data-retirer="${esc(s.id)}" title="Arrêter de surveiller">✕</button></div>
+      ${(s.alertes || []).length ? s.alertes.slice(0, 5).map(a => `<a class="alerte" href="${esc(a.url)}" target="_blank" rel="noopener">
+          ${a.image ? `<img src="${esc(a.image)}" alt="">` : ""}<span>${esc(a.nom)}</span><b>${eur(a.prix)}</b>${a.gain ? `<em>+${eur(a.gain)}</em>` : ""}</a>`).join("")
+        : `<div class="rien">Pas encore de nouveau bon plan.</div>`}
+    </div>`).join("")}
+  </div>`;
+}
+$("#btn-veille").onclick = () => { chargerSurveillances(); ouvrirPanneau("veille"); };
 $("#rapport").onclick = () => fetch("/api/rapport?id=" + jobId);
 
 // ---------- favoris ----------
@@ -671,7 +786,7 @@ async function ouvrirFavoris(){
   document.body.classList.add("vue-favoris");
   produits = Object.values(favoris).map(f => ({...f}));
   for (const p of produits) if (p.estimation && !estims[p.id]) estims[p.id] = {resume: p.estimation};
-  $("#outils").hidden = !produits.length; $("#plus").hidden = true;
+  $("#outils").hidden = !produits.length; $("#plus").hidden = true; majBoutonSurveiller();
   afficher(true); majMsgFavoris();
   if (!produits.length) return;
   $("#msg").textContent += " · vérification de la disponibilité…";
@@ -691,6 +806,7 @@ function quitterFavoris(){
   if (!vueFavoris) return;
   vueFavoris = false; document.body.classList.remove("vue-favoris");
   if (sauvegarde) { produits = sauvegarde.produits; jobId = sauvegarde.job; $("#msg").textContent = sauvegarde.msg; $("#outils").hidden = sauvegarde.outils; }
+  majBoutonSurveiller();
   afficher(true);
 }
 $("#btn-favoris").onclick = () => vueFavoris ? quitterFavoris() : ouvrirFavoris();
@@ -723,8 +839,9 @@ async function suivreLot(job, depuis){
   for (const r of d.resultats || []) {
     const e = estims[r.id];
     if (!(e && e.complet)) estims[r.id] = {resume: r.resume};
-    rafraichirCarte(r.id);
+    if (!bonsSeulement()) rafraichirCarte(r.id);
   }
+  if (bonsSeulement() && (d.resultats || []).length && !ficheId) afficher();
   const fait = d.nb_faits ?? depuis, total = d.total ?? 0;
   if (fait < total) {
     $("#msg").textContent = `Calcul des gains : ${fait} / ${total} articles…`;
@@ -985,7 +1102,7 @@ document.addEventListener("fullscreenchange", () => {
 document.addEventListener("keydown", e => {
   if (e.key === "F11") { e.preventDefault(); basculerPleinEcran(); }
 });
-chargerFavoris();
+chargerFavoris(); chargerSurveillances();
 init().catch(() => $("#msg").textContent = "Le moteur de l'application ne répond pas. Relance CashScalp.");
 </script>
 </body>
