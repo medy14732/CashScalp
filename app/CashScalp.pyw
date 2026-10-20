@@ -31,6 +31,7 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 import cashscalp as cs  # noqa: E402
 import estimation  # noqa: E402
+import avis_claude  # noqa: E402
 
 PORT = 8765
 RAPPORTS = os.path.join(ICI, "rapports")
@@ -588,6 +589,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return self._envoyer(200, lot(q.get("job", ""), int(q.get("depuis", 0) or 0)))
             if u.path == "/api/estimer":
                 return self._envoyer(200, estimer(q.get("id", "")))
+            if u.path == "/api/avis":
+                pid = q.get("id", "")
+                est = estimer(pid)
+                return self._envoyer(200, avis_claude.avis(produits_connus[pid], est, q.get("relancer") == "1"))
+            if u.path == "/api/cle":
+                return self._envoyer(200, avis_claude.etat_cle())
             if u.path == "/api/favoris":
                 return self._envoyer(200, lire_favoris())
             if u.path == "/api/favori_ajouter":
@@ -608,6 +615,22 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     os.startfile(job["rapport"])
                 return self._envoyer(200, {"ok": True})
             self._envoyer(404, {"erreur": "introuvable"})
+        except PermissionError as e:
+            self._envoyer(403, {"erreur": str(e), "cle": True})
+        except Exception as e:
+            journaliser(traceback.format_exc())
+            self._envoyer(500, {"erreur": f"{type(e).__name__} : {e}"})
+
+    def do_POST(self):
+        u = urllib.parse.urlparse(self.path)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            corps = json.loads(self.rfile.read(n) or b"{}")
+            if u.path == "/api/cle":            # la clé passe dans le corps, jamais dans l'adresse
+                return self._envoyer(200, avis_claude.enregistrer_cle(corps.get("cle", "")))
+            self._envoyer(404, {"erreur": "introuvable"})
+        except ValueError as e:
+            self._envoyer(400, {"erreur": str(e)})
         except Exception as e:
             journaliser(traceback.format_exc())
             self._envoyer(500, {"erreur": f"{type(e).__name__} : {e}"})
