@@ -35,12 +35,17 @@ appareil portatif sony microsoft nintendo montre connectee perceuse visseuse meu
 enceinte casque ecouteurs sans fil bluetooth edition version modele
 marine nuit minuit sideral graphite platine bronze champagne lavande
 moniteur ecran monitor televiseur incurve curved gaming gamer lcd led
+app photo num numerique objectif objectifs obj for camera action reflex compact hybride kit
 """.split())
 ACCESSOIRES = set("""
 coque housse etui protection protege verre trempe film chargeur cable adaptateur support
 bracelet station dock sacoche sac pochette manette skin stylet clavier souris facades
+filtre filtres filter filters polarisant polarizer dome caisson gimbal mounts strap perche selfie
+trepied tripod statief stativ parasoleil bouchon behuizing housing oplader lader charger rechargeable
+rugzak backpack sleeve lanyard protector screenprotector backdoor
 """.split())
-VARIANTES = {"plus", "pro", "max", "mini", "ultra", "lite", "slim", "oled", "air", "fe", "se", "xl", "ti", "super", "xt"}
+VARIANTES = {"plus", "pro", "max", "mini", "ultra", "lite", "slim", "oled", "air", "fe", "se", "xl", "ti", "super", "xt",
+             "vc", "vr", "os"}      # objectifs stabilisés : nettement plus chers que la version de base
 MARQUEUR_RECOND = ("reconditionn", "seconde chance", "deuxieme chance", "refurb")
 
 
@@ -49,6 +54,8 @@ def _canon(t):
     t = unicodedata.normalize("NFKD", t.lower().replace("\xa0", " "))
     t = "".join(c for c in t if not unicodedata.combining(c))
     t = re.sub(r"playstation\s*(\d)", r"ps\1", t)
+    t = re.sub(r"\bgo\s*pro\b", "gopro", t)        # « go » seul est retiré (gigaoctet)
+    t = re.sub(r"(\d+)\s*mm\b", r"\1", t)           # focales : « 300mm » = « 300 »
     t = re.sub(r"(\d+)\s*(go|gb)\b", r"\1", t)
     t = re.sub(r"(\d+)\s*(to|tb)\b", r"\1to", t)
     return t
@@ -311,6 +318,10 @@ def variantes_requete(tokens):
     return essais
 
 
+BOITIER_PHOTO = (r"\b(eos\s*\d+d|\d{3,4}d|d\d{2,4}|nikon\s*\d{4}|alpha\s*\d+|a\d{4}|nex\s*\d|lumix|dslr|spiegelreflex"
+                 r"|spiegelreflexkamera|camera|kamera|body|boitier|reflex)\b")
+
+
 def estimer(produit, complet=True):
     """produit : dict avec id, nom, prix, url, categorie. Renvoie détails + références + verdict.
 
@@ -335,6 +346,10 @@ def estimer(produit, complet=True):
             tokens, texte, exclure = comps[0]["tokens"], comps[0]["texte"], comps[0]["exclure"]
     if ordi:                       # un portable ne doit pas être comparé à une housse ou un chargeur
         exclure = r"\b(chargeur|oplader|charger|adaptateur|adapter|housse|sacoche|sleeve|hoes|coque|etui|cover|clavier seul|batterie de remplacement|ecran de remplacement|dalle)\b"
+    if re.search(r"\bobjectif|^obj\b", _canon(produit.get("categorie", "") + " " + produit["nom"])) \
+            and not re.search(BOITIER_PHOTO, " ".join(tokens)):
+        # objectif seul : une annonce « boîtier + objectif » n'est pas le même produit
+        exclure = (exclure + "|" if exclure else "") + BOITIER_PHOTO
     res = {"id": produit["id"], "mots_cles": tokens, "complet": complet}
     sources = None if complet else [k for k in px.SOURCES if k != "amazon"]
 
@@ -449,7 +464,9 @@ def estimer(produit, complet=True):
     res["gains"] = {k: {"ref": v, "gain": round(v - prix, 2), "pct": round((1 - prix / v) * 100, 1)}
                     for k, v in refs.items() if v and v > 0}
     res["verdict"] = verdict(res["gains"])
-    res["pertinence"] = pertinence(res["verdict"].get("base"), choisies, lignes, res["composants"])
+    res["pertinence"] = pertinence(res["verdict"].get("base"), choisies, lignes, res["composants"], res["mots_cles"])
+    if res["pertinence"]["niveau"] == "faible" and res["verdict"]["note"] in ("excellent", "bon"):
+        res["verdict"]["note"] = "a_verifier"      # gros gain sur une référence douteuse : pas un bon plan
     for l in res["boutiques"]:
         l.pop("_offres", None)
     if res.get("occasion"):
@@ -474,7 +491,7 @@ def verdict(gains):
     return {"note": "inconnu", "base": None}
 
 
-def pertinence(base, choisies, lignes, composants=None):
+def pertinence(base, choisies, lignes, composants=None, mots=()):
     """Peut-on se fier au gain affiché ? Selon le sérieux du site, le nombre d'annonces
     et l'accord avec d'autres sites. Renvoie {niveau: fiable|moyen|faible, raisons: [...]}."""
     if not base:
@@ -520,6 +537,10 @@ def pertinence(base, choisies, lignes, composants=None):
         niveau = "fiable" if points >= 7 else "moyen" if points >= 4 else "faible"
     else:
         niveau = "fiable" if points >= 4 else "moyen" if points >= 3 else "faible"
+        if not accord and not any(est_reference_modele(m) for m in mots):
+            # « télécommande flash » sans référence de modèle : la boutique a pu trouver n'importe quoi
+            niveau = "faible"
+            raisons.append("recherche sans référence de modèle")
     return {"niveau": niveau, "raisons": raisons, "source": ref["source"]}
 
 

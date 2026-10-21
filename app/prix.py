@@ -360,13 +360,13 @@ def marche_occasion(lignes, libelle, **extra):
     vues, offres = set(), []
     for l in lignes:
         for o in l.get("_offres", []):
-            k = (o["source"], o["prix"], _canon(o["nom"])[:40])
+            k = (o["prix"], _canon(o["nom"])[:40])     # 2ememain et Marktplaats partagent les mêmes annonces
             if k not in vues:
                 vues.add(k)
                 offres.append(o)
     # les sites peu pertinents ne comptent que s'il n'y a pas assez d'annonces sérieuses
     serieuses = [o for o in offres if pertinence_site(o.get("cle")) >= 2]
-    if len(serieuses) >= 3 and len({o["source"] for o in serieuses}) >= 2:
+    if len(serieuses) >= 5 and len({o["source"] for o in serieuses}) >= 2:
         offres = serieuses
     sources = sorted({o["source"] for o in offres})
     if len(offres) < 3 or len(sources) < 2:
