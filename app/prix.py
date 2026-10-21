@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 
 from cashscalp import lire
-from estimation import ACCESSOIRES, MARQUEUR_RECOND, VARIANTES, _canon, UA, limite
+from estimation import ACCESSOIRES, MARQUEUR_RECOND, VARIANTES, _canon, UA, limite, seuil_effectif
 from estimation import Pool as ThreadPoolExecutor   # garde la priorité de la fiche ouverte
 
 _cache = {}
@@ -62,7 +62,7 @@ def correspond(tokens, nom, exclure=None, seuil=0.6, accessoires=True):
         return False
     if (q & VARIANTES) != (c & VARIANTES):
         return False
-    return sum(present(m) for m in q) / len(q) >= seuil
+    return sum(present(m) for m in q) / len(q) >= seuil_effectif(q, seuil)
 
 
 def stats_robustes(valeurs):
