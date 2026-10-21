@@ -332,7 +332,7 @@ def resume_estimation(est):
     v = est.get("verdict", {})
     g = est.get("gains", {}).get(v.get("base") or "", {})
     return {"note": v.get("note"), "base": v.get("base"), "pct": v.get("pct"), "gain": g.get("gain"),
-            "ref": g.get("ref")}
+            "ref": g.get("ref"), "pertinence": (est.get("pertinence") or {}).get("niveau")}
 
 
 POOL = ThreadPoolExecutor(16)          # estimations groupées ; chaque site garde sa propre limite
@@ -411,7 +411,9 @@ def maj_surveillance(sid, **champs):
 
 
 def ajouter_surveillance(q):
-    params = {k: (q.get(k) or "").strip() for k in ("zone", "cat", "q", "pmax")}
+    params = {k: (q.get(k) or "").strip() for k in ("zone", "cat", "q", "pmin", "pmax")}
+    if not params["pmin"]:            # même identifiant qu'avant pour les recherches sans prix minimum
+        del params["pmin"]
     sid = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:10]
     with verrou_surv:
         liste = lire_surveillances()
@@ -453,7 +455,7 @@ def verifier_surveillance(s):
         except Exception:
             journaliser(traceback.format_exc())
             continue
-        if r.get("note") in ("excellent", "bon"):
+        if r.get("note") in ("excellent", "bon") and r.get("pertinence") != "faible":
             bons.append({"id": p["id"], "nom": p["nom"], "prix": p["prix"], "url": p["url"], "image": p.get("image"),
                          "magasin": p.get("magasin"), "note": r["note"], "gain": r.get("gain"),
                          "vu_le": time.strftime("%Y-%m-%d %H:%M")})

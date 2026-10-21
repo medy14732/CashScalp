@@ -252,6 +252,20 @@ SOURCES = {
 }
 SOURCES_OCCASION = [k for k, v in SOURCES.items() if v[1] == "occasion"]
 
+# Pertinence de chaque site comme référence de prix (3 = sérieux, 2 = correct, 1 = à prendre avec des pincettes).
+# Un site absent de cette liste vaut 1 : on ne base jamais un gain sur une boutique inconnue.
+PERTINENCE = {
+    "cashconverters": 3,   # même réseau, même état « occasion contrôlée », prix réels en magasin
+    "coolblue": 3, "mediamarkt": 3, "amazon": 3,       # grandes enseignes belges, prix neufs fiables
+    "kieskeurig": 2,       # comparateur : le prix le plus bas peut venir d'une petite boutique inconnue
+    "2ememain": 2, "marktplaats": 2,                   # annonces de particuliers : prix demandés, pas vendus
+    "kleinanzeigen": 1,    # marché allemand : prix et habitudes différents de la Belgique
+}
+
+
+def pertinence_site(cle):
+    return PERTINENCE.get(cle, 1)
+
 
 def liens_manuels(texte):
     q = urllib.parse.quote_plus(texte)
@@ -320,7 +334,8 @@ def interroger(cle, texte, tokens, exclure=None, bornes=None, verif=None, seuil=
             garde = [o for o in bons if st["min"] <= o["prix"] <= st["max"]]
             res["exemples"] = [{k: o[k] for k in ("nom", "prix", "url")} for o in sorted(garde, key=lambda o: o["prix"])[:4]]
             # toutes les annonces retenues, pour la référence « marché de l'occasion » (tous sites réunis)
-            res["_offres"] = [{"nom": o["nom"], "prix": o["prix"], "url": o["url"], "source": nom} for o in bons]
+            res["_offres"] = [{"nom": o["nom"], "prix": o["prix"], "url": o["url"], "source": nom, "cle": cle}
+                              for o in bons]
     else:
         if neufs:
             meilleur = min(neufs, key=lambda o: o["prix"])
@@ -349,12 +364,18 @@ def marche_occasion(lignes, libelle, **extra):
             if k not in vues:
                 vues.add(k)
                 offres.append(o)
+    # les sites peu pertinents ne comptent que s'il n'y a pas assez d'annonces sérieuses
+    serieuses = [o for o in offres if pertinence_site(o.get("cle")) >= 2]
+    if len(serieuses) >= 3 and len({o["source"] for o in serieuses}) >= 2:
+        offres = serieuses
     sources = sorted({o["source"] for o in offres})
     if len(offres) < 3 or len(sources) < 2:
         return None
     st = stats_robustes([o["prix"] for o in offres])
     garde = [o for o in offres if st["min"] <= o["prix"] <= st["max"]]
+    cles = {o.get("cle") for o in offres}
     return {"source": libelle, "cle": "marche", "type": "occasion", "marche": True, "sites": sources,
+            "pertinence": max(pertinence_site(c) for c in cles),   # 3 seulement avec un site sérieux dedans
             "exemples": sorted(garde, key=lambda o: o["prix"])[:6], **st, **extra}
 
 
