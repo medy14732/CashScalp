@@ -68,6 +68,7 @@ main{padding:8px 24px 40px}
 .b.correct{background:#444;color:#eee}
 .b.cher{background:#3a1d1d;color:#ffb0b0}
 .b.inconnu{background:#2b2b2b;color:#aaa}
+.b.a_verifier{background:#2b2b2b;color:#e0c97a}
 .b.calcul{background:#000b;color:#ddd}
 .corps{padding:12px 14px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
 .prix{font-size:22px;font-weight:900;color:var(--orange)}
@@ -461,8 +462,9 @@ const $ = s => document.querySelector(s);
 const eur = v => v == null ? "–" : Number(v).toLocaleString("fr-BE", {minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2}) + " €";
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const pct = v => Math.round(Math.abs(v)) + " %";
-const NOTES = {excellent: "Excellente affaire", bon: "Bonne affaire", correct: "Prix correct", cher: "Plutôt cher", inconnu: "Pas de référence"};
-const COULEURS = {excellent: "#ff8a00", bon: "#ffcf7a", correct: "#8a8a8a", cher: "#ff6b6b", inconnu: "#444"};
+const NOTES = {excellent: "Excellente affaire", bon: "Bonne affaire", correct: "Prix correct", cher: "Plutôt cher", inconnu: "Pas de référence",
+               a_verifier: "Gain à vérifier"};
+const COULEURS = {excellent: "#ff8a00", bon: "#ffcf7a", correct: "#8a8a8a", cher: "#ff6b6b", inconnu: "#444", a_verifier: "#b0a27a"};
 const AU = {occasion: "au prix d'occasion habituel", reconditionne: "au reconditionné", neuf: "au neuf",
             pieces_occasion: "aux pièces d'occasion", pieces_neuf: "aux pièces neuves"};
 const BASES = {occasion: "le prix d'occasion habituel", reconditionne: "le reconditionné", neuf: "le neuf",
