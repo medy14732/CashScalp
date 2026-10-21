@@ -332,7 +332,8 @@ def resume_estimation(est):
     v = est.get("verdict", {})
     g = est.get("gains", {}).get(v.get("base") or "", {})
     return {"note": v.get("note"), "base": v.get("base"), "pct": v.get("pct"), "gain": g.get("gain"),
-            "ref": g.get("ref"), "pertinence": (est.get("pertinence") or {}).get("niveau")}
+            "ref": g.get("ref"), "pertinence": (est.get("pertinence") or {}).get("niveau"),
+            "score": (est.get("pertinence") or {}).get("score")}
 
 
 POOL = ThreadPoolExecutor(16)          # estimations groupées ; chaque site garde sa propre limite

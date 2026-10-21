@@ -28,7 +28,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 BRUIT = set("""
 gsm smartphone telephone etat neuf bon tres excellent occasion batterie batteries boite boitier
 sans avec chargeur cable griffe griffes rayure rayures prev ban snap r pour et de du des la le
-les en un une couleur go gb to tb noir noire blanc blanche bleu bleue rouge gris grise argent
+les en un une couleur to tb noir noire blanc blanche bleu bleue rouge gris grise argent
 argente argentee or rose vert verte violet mauve jaune orange titanium titane black white blue
 midnight starlight ciel complet complete console ordinateur portable pc laptop tablette tactile
 appareil portatif sony microsoft nintendo montre connectee perceuse visseuse meuleuse scie
@@ -43,6 +43,8 @@ bracelet station dock sacoche sac pochette manette skin stylet clavier souris fa
 filtre filtres filter filters polarisant polarizer dome caisson gimbal mounts strap perche selfie
 trepied tripod statief stativ parasoleil bouchon behuizing housing oplader lader charger rechargeable
 rugzak backpack sleeve lanyard protector screenprotector backdoor
+lot lots stuks bundle gezocht zoek zoekt cherche recherche suche gesucht ruil echange tausch
+defect defekt kapot panne onderdelen
 """.split())
 VARIANTES = {"plus", "pro", "max", "mini", "ultra", "lite", "slim", "oled", "air", "fe", "se", "xl", "ti", "super", "xt",
              "vc", "vr", "os"}      # objectifs stabilisés : nettement plus chers que la version de base
@@ -77,7 +79,12 @@ def mots_cles(nom):
             continue
         vus.add(m)
         res.append(m)
-    return res[:5]
+    if len(res) <= 5:
+        return res
+    # trop de mots : on garde d'abord ce qui identifie le modèle (références, nombres), puis les premiers mots
+    chiffres = [m for m in res if any(c.isdigit() for c in m)][:3]
+    mots = [m for m in res if m not in chiffres][:5 - len(chiffres)]
+    return [m for m in res if m in chiffres or m in mots]
 
 
 # Requêtes simultanées autorisées par site : assez pour aller vite, pas assez pour se faire bloquer
@@ -166,7 +173,13 @@ def _correspond(requete, nom_candidat, accessoire_ok=False, seuil=0.6):
         return False
     if (q & VARIANTES) != (c & VARIANTES):                     # iPhone 8 ≠ iPhone 8 Plus
         return False
-    return sum(present(m) for m in q) / len(q) >= seuil
+    return sum(present(m) for m in q) / len(q) >= seuil_effectif(q, seuil)
+
+
+def seuil_effectif(q, seuil):
+    """Au plus un mot de la recherche peut manquer, et aucun avec 3 mots ou moins :
+    « apple pencil pro » ne doit pas trouver un « iPad Pro », ni « samurai spirit neo geo aes » un autre jeu Neo Geo."""
+    return 1.0 if len(q) <= 3 else max(seuil, (len(q) - 1) / len(q))
 
 
 # --------------------------------------------------------------------------- fiche produit
@@ -464,7 +477,8 @@ def estimer(produit, complet=True):
     res["gains"] = {k: {"ref": v, "gain": round(v - prix, 2), "pct": round((1 - prix / v) * 100, 1)}
                     for k, v in refs.items() if v and v > 0}
     res["verdict"] = verdict(res["gains"])
-    res["pertinence"] = pertinence(res["verdict"].get("base"), choisies, lignes, res["composants"], res["mots_cles"])
+    res["pertinence"] = pertinence(res["verdict"].get("base"), choisies, lignes, res["composants"], res["mots_cles"],
+                                   res["verdict"].get("pct"))
     if res["pertinence"]["niveau"] == "faible" and res["verdict"]["note"] in ("excellent", "bon"):
         res["verdict"]["note"] = "a_verifier"      # gros gain sur une référence douteuse : pas un bon plan
     for l in res["boutiques"]:
@@ -491,57 +505,77 @@ def verdict(gains):
     return {"note": "inconnu", "base": None}
 
 
-def pertinence(base, choisies, lignes, composants=None, mots=()):
-    """Peut-on se fier au gain affiché ? Selon le sérieux du site, le nombre d'annonces
-    et l'accord avec d'autres sites. Renvoie {niveau: fiable|moyen|faible, raisons: [...]}."""
+def pertinence(base, choisies, lignes, composants=None, mots=(), pct=None):
+    """Peut-on se fier au gain affiché ? Score de 0 à 100 selon le sérieux du site, la précision
+    de la recherche, le nombre d'annonces, l'accord entre sites et la vraisemblance de l'écart.
+    Renvoie {score, niveau: fiable|moyen|faible, raisons: [...]}."""
     if not base:
-        return {"niveau": None, "raisons": []}
+        return {"score": None, "niveau": None, "raisons": []}
     if base.startswith("pieces"):
-        return {"niveau": "moyen" if composants and composants.get("complet_occasion") else "faible",
-                "raisons": ["estimation pièce par pièce, à vérifier"]}
+        score = 45 if composants and composants.get("complet_occasion") else 25
+        return {"score": score, "niveau": niveau_pertinence(score), "raisons": ["estimation pièce par pièce, à vérifier"]}
     ref = choisies[base]
     valeur = ref.get("mediane") or ref["prix"]
-    raisons, points = [], ref["pertinence"]
+    raisons = []
+    # 1) sérieux du site (35 points)
+    score = {3: 35, 2: 22}.get(ref["pertinence"], 8)
     if not ref.get("marche"):
         raisons.append({3: "site sérieux", 2: "site correct"}.get(ref["pertinence"], "site peu pertinent"))
-    # autres sites sérieux qui donnent à peu près le même prix (à 25 % près)
+    # 2) autres sites sérieux qui donnent à peu près le même prix, à 25 % près (25 points)
     accord = {l["source"] for l in lignes
               if l is not ref and l["type"] == ref["type"] and l["pertinence"] >= 2 and not l.get("approx")
               and l.get("cle") != ref.get("cle") and (l.get("mediane") or l.get("prix"))
               and abs((l.get("mediane") or l["prix"]) - valeur) <= 0.25 * valeur}
     if ref.get("marche"):          # le marché réunit déjà plusieurs sites : ce sont eux qui confirment
         accord = set(ref.get("sites") or [])
-    if ref.get("marche"):
-        points += 2 if len(accord) >= 3 else 1
+        score += 25 if len(accord) >= 3 else 15
         raisons.append(f"{len(accord)} sites réunis" + (" dont Cash Converters" if ref["pertinence"] >= 3 else ""))
     elif len(accord) >= 2:
-        points += 2
+        score += 25
         raisons.append(f"confirmé par {len(accord)} sites")
     elif accord:
-        points += 1
+        score += 15
         raisons.append("confirmé par 1 autre site")
     else:
         raisons.append("aucun autre site ne confirme")
+    # 3) précision : assez d'annonces aux prix cohérents, ou recherche sur une référence exacte (40 points)
+    modele_exact = any(est_reference_modele(m) for m in mots)
     if ref["type"] == "occasion":
         nb = ref.get("nb", 0)
-        points += 2 if nb >= 5 else 1 if nb >= 3 else 0
+        score += 25 if nb >= 8 else 20 if nb >= 5 else 12 if nb >= 3 else 5
         raisons.append(f"{nb} annonce{'s' if nb > 1 else ''}")
-        if ref.get("fiabilite") == "elevee":
-            points += 1
-        elif ref.get("fiabilite") == "faible":
-            points -= 2
+        score += {"elevee": 15, "moyenne": 7}.get(ref.get("fiabilite"), 0)
+        if ref.get("fiabilite") == "faible":
             raisons.append("prix très dispersés")
         if ref.get("meme_cpu"):
-            points -= 1
+            score -= 10
             raisons.append("même configuration, pas le même modèle")
-        niveau = "fiable" if points >= 7 else "moyen" if points >= 4 else "faible"
     else:
-        niveau = "fiable" if points >= 4 else "moyen" if points >= 3 else "faible"
-        if not accord and not any(est_reference_modele(m) for m in mots):
-            # « télécommande flash » sans référence de modèle : la boutique a pu trouver n'importe quoi
-            niveau = "faible"
-            raisons.append("recherche sans référence de modèle")
-    return {"niveau": niveau, "raisons": raisons, "source": ref["source"]}
+        if modele_exact:            # une boutique neuve a trouvé la référence exacte
+            score += 25
+        score += 15 if len(accord) >= 2 else 7 if accord else 0
+    # 4) recherche vague (« lunette soleil », « presse agrume ») : on compare avec n'importe quel modèle
+    if not any(any(c.isdigit() for c in m) for m in mots):
+        if len(mots) <= 2:
+            score = min(score - 15, 40)
+            raisons.append("recherche trop vague (pas de modèle précis)")
+        else:
+            score -= 10
+            raisons.append("pas de référence de modèle")
+    # 5) un écart énorme avec le marché est rarement réel : souvent un autre produit (kit, version, accessoire)
+    # (comparé au neuf, une occasion à moitié prix est normale : on tolère plus d'écart)
+    enorme, grand = (60, 45) if ref["type"] == "occasion" else (80, 70)
+    if pct is not None and pct >= enorme:
+        score = min(score - 20, 60)        # jamais « fiable » : à vérifier de ses yeux
+        raisons.append("écart énorme : vérifie que c'est le même produit")
+    elif pct is not None and pct >= grand:
+        score -= 8
+    score = max(0, min(100, round(score)))
+    return {"score": score, "niveau": niveau_pertinence(score), "raisons": raisons, "source": ref["source"]}
+
+
+def niveau_pertinence(score):
+    return "fiable" if score >= 70 else "moyen" if score >= 45 else "faible"
 
 
 if __name__ == "__main__":

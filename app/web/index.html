@@ -223,7 +223,14 @@ header{position:sticky}
   background:#000a;color:#fff;font-size:19px;line-height:1;display:grid;place-items:center;transition:.15s;z-index:2}
 .coeur:hover{transform:scale(1.12);background:#000d}
 .coeur.on{background:#ff5d7a;color:#fff}
-.vignette .badges{right:52px}
+.vignette .badges{right:96px}
+.bulle-pert{position:absolute;top:8px;right:52px;width:36px;height:36px;border-radius:50%;z-index:2;display:grid;place-items:center;
+  background:conic-gradient(var(--c) calc(var(--s) * 1%), #ffffff26 0);box-shadow:0 2px 6px #0006}
+.bulle-pert::before{content:"";position:absolute;inset:4px;border-radius:50%;background:#111d}
+.bulle-pert b{position:relative;font-size:12.5px;font-weight:800;color:#fff}
+.bulle-pert.sans b{color:#aaa}
+.vue-liste .bulle-pert{width:28px;height:28px;top:4px;right:36px} .vue-liste .bulle-pert b{font-size:10.5px}
+.vue-liste .bulle-pert::before{inset:3px}
 .b.vendu{background:#555;color:#fff} .b.baisse{background:var(--vert);color:#062} .b.hausse{background:#5a2626;color:#ffb0b0}
 .carte.vendue{opacity:.55} .carte.vendue .vignette img{filter:grayscale(1)}
 .btn.fav{background:var(--panel2);color:var(--txt);border:1px solid var(--line);cursor:pointer;font:inherit;font-weight:900}
@@ -434,6 +441,7 @@ input::placeholder{color:#6f6f6f;font-weight:500}
       <div class="segments" id="segments" role="tablist" aria-label="Trier">
         <button type="button" data-tri="affaire">Meilleures affaires</button>
         <button type="button" data-tri="gain">Plus gros gain €</button>
+        <button type="button" data-tri="pertinence">Pertinence</button>
         <button type="button" data-tri="pa">Prix ↑</button>
         <button type="button" data-tri="pd">Prix ↓</button>
         <button type="button" data-tri="nouveau">Nouveautés</button>
@@ -576,7 +584,7 @@ async function init(){
   const voulu = cats.includes(p.cat) ? p.cat : anciens[p.cat];
   $("#cat").value = cats.includes(voulu) ? voulu : "2-categories";
   $("#q").value = p.q || ""; $("#pmin").value = p.pmin || ""; $("#pmax").value = p.pmax || "";
-  $("#auto").checked = p.auto !== false; $("#tri").value = ["affaire", "gain", "pa", "pd", "nouveau"].includes(p.tri) ? p.tri : "affaire";
+  $("#auto").checked = p.auto !== false; $("#tri").value = ["affaire", "gain", "pertinence", "pa", "pd", "nouveau"].includes(p.tri) ? p.tri : "affaire";
   $("#bons").classList.toggle("actif", !!p.bons);
   document.body.classList.toggle("vue-liste", !!p.liste); majBoutonVue();
   majSegments();
@@ -629,6 +637,7 @@ function liste(){
   if (t === "pa") l.sort((a, b) => a.prix - b.prix);
   else if (t === "pd") l.sort((a, b) => b.prix - a.prix);
   else if (t === "gain") l.sort((a, b) => g(b) - g(a) || valeurAffaire(b) - valeurAffaire(a));
+  else if (t === "pertinence") l.sort((a, b) => (resume(b.id)?.score ?? -1) - (resume(a.id)?.score ?? -1) || g(b) - g(a));
   else if (t === "nouveau") l.sort((a, b) => (b.nouveau - a.nouveau) || valeurAffaire(b) - valeurAffaire(a));
   else l.sort((a, b) => valeurAffaire(b) - valeurAffaire(a));
   return l;
@@ -646,8 +655,6 @@ function badges(p){
   if (p.remise_pct > 0) h += `<span class="b solde">-${Math.round(p.remise_pct)}%</span>`;
   if (estims[p.id] === "calcul") h += `<span class="b calcul">estimation…</span>`;
   else { const r = resume(p.id); if (r?.note && r.note !== "inconnu") h += `<span class="b ${r.note}">${NOTES[r.note]}</span>`; }
-  const pe = resume(p.id)?.pertinence;
-  if (pe && estims[p.id] !== "calcul") h += `<span class="b pert ${pe}" title="${PERT_AIDE[pe]}">${PERT[pe]}</span>`;
   return h;
 }
 const VS = {occasion: "vs occasion", reconditionne: "vs reconditionné", neuf: "vs neuf",
@@ -672,7 +679,7 @@ function ligneRevente(p){
 }
 function carte(p, i = 0){
   return `<article class="carte ${p.etat === "vendu" ? "vendue" : ""}" data-id="${esc(p.id)}" style="--i:${Math.min(i, 24)}">
-    <div class="vignette"><img loading="lazy" src="${esc(p.image)}" alt=""><div class="badges">${etatFavori(p)}${badges(p)}</div>${coeur(p)}</div>
+    <div class="vignette"><img loading="lazy" src="${esc(p.image)}" alt=""><div class="badges">${etatFavori(p)}${badges(p)}</div>${bulle(p)}${coeur(p)}</div>
     <div class="corps">
       <div class="prix">${eur(p.prix)}${p.remise_pct > 0 ? `<s>${eur(p.prix_normal)}</s>` : ""}</div>
       <div class="titre">${esc(p.nom)}</div>
@@ -777,6 +784,14 @@ function poserFavoris(liste){
   $("#nb-fav").textContent = n; $("#nb-fav").hidden = !n;
 }
 async function chargerFavoris(){ try { poserFavoris(await (await fetch("/api/favoris")).json()); } catch {} }
+// pertinence de 0 à 100 : cercle rempli d'autant, du rouge (0) au vert (100)
+const couleurScore = s => `hsl(${Math.round(s * 1.2)} 75% 48%)`;
+function bulle(p){
+  const r = resume(p.id), s = r?.score;
+  if (s == null) return r && estims[p.id] !== "calcul" ? `<div class="bulle-pert sans" style="--s:0;--c:#555" title="Pas de prix de référence">
+    <b>?</b></div>` : "";
+  return `<div class="bulle-pert" style="--s:${s};--c:${couleurScore(s)}" title="Pertinence du prix de référence : ${s}/100 (${PERT[r.pertinence] || ""})"><b>${s}</b></div>`;
+}
 function coeur(p){
   const on = !!favoris[p.id];
   return `<button type="button" class="coeur ${on ? "on" : ""}" data-fav="${esc(p.id)}" title="${on ? "Retirer des favoris" : "Ajouter aux favoris"}">${on ? "♥" : "♡"}</button>`;
@@ -879,7 +894,7 @@ async function suivreLot(job, depuis){
   $("#barre").style.display = "none";
   const bons = produits.filter(p => ["excellent", "bon"].includes(resume(p.id)?.note)).length;
   $("#msg").textContent = `${produits.length} articles · gains calculés · ${bons} bonne${bons > 1 ? "s" : ""} affaire${bons > 1 ? "s" : ""} repérée${bons > 1 ? "s" : ""}`;
-  if ($("#tri").value === "affaire" && !ficheId) afficher(true);
+  if (["affaire", "gain", "pertinence"].includes($("#tri").value) && !ficheId) afficher(true);
 }
 async function chargerComplet(id){
   const e = estims[id];
@@ -1032,7 +1047,7 @@ function blocVerdict(p, e){
 function blocPertinence(e){
   const pe = e.pertinence;
   if (!pe || !pe.niveau) return "";
-  return `<div class="pert-fiche">Fiabilité du prix de référence : ${pastille(pe.niveau)}
+  return `<div class="pert-fiche">Pertinence du prix de référence : <b style="color:${couleurScore(pe.score)}">${pe.score}/100</b> ${pastille(pe.niveau)}
     <span>${esc(pe.raisons.join(" · "))}${pe.source ? ` (${esc(pe.source)})` : ""}</span></div>`;
 }
 
