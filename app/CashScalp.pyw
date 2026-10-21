@@ -347,12 +347,21 @@ def estimer(pid, complet=True):
     produit = produits_connus.get(pid)
     if not produit:
         raise KeyError("article inconnu, relance la recherche")
-    verrou = verrou_est.setdefault(pid, threading.Lock())
-    with verrou:
-        if not suffisant(estimations.get(pid)):
-            est = estimation.estimer(produit, complet=complet)
-            est["resume"] = resume_estimation(est)
-            estimations[pid] = est
+    if complet:                        # fiche ouverte : elle passe devant le calcul de fond
+        estimation.PRIORITAIRES.clear()
+        estimation.PRIORITAIRES.add(pid)
+    try:
+        # verrou distinct pour la fiche : elle n'attend pas la version rapide en cours pour le même article
+        verrou = verrou_est.setdefault((pid, complet), threading.Lock())
+        with verrou:
+            if not suffisant(estimations.get(pid)):
+                est = estimation.estimer(produit, complet=complet)
+                est["resume"] = resume_estimation(est)
+                if not (estimations.get(pid) or {}).get("complet"):   # ne pas écraser la version complète
+                    estimations[pid] = est
+    finally:
+        if complet:
+            estimation.PRIORITAIRES.discard(pid)
     return estimations[pid]
 
 

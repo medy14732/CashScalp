@@ -6,6 +6,7 @@ Trois références de prix :
   - reconditionné : prix le plus bas chez Coolblue (offres « Reconditionné » / « Seconde Chance »)
   - neuf          : prix le plus bas chez Coolblue (offres neuves)
 """
+import contextvars
 import html
 import json
 import re
@@ -15,6 +16,8 @@ import time
 import unicodedata
 import urllib.parse
 import urllib.request
+
+from concurrent.futures import ThreadPoolExecutor
 
 import cashscalp as cs
 
@@ -77,12 +80,48 @@ LIMITES_SITES = {"www.cashconverters.be": 4, "www.coolblue.be": 6, "www.mediamar
 _semaphores, _verrou_sem = {}, threading.Lock()
 _cache_reseau = {}
 
+# Article en cours d'estimation (suit les sous-tâches grâce à Pool) et articles dont la fiche est ouverte :
+# leurs requêtes passent devant celles du calcul de fond.
+_article = contextvars.ContextVar("article", default=None)
+PRIORITAIRES = set()
+
+
+class Pool(ThreadPoolExecutor):
+    """ThreadPoolExecutor qui transmet aux sous-tâches l'article en cours (pour la priorité)."""
+    def submit(self, fn, *args, **kwargs):
+        return super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
+
+
+class Limite:
+    """Nombre maximal de requêtes simultanées vers un site ; une place libérée va d'abord à la fiche ouverte."""
+    def __init__(self, n):
+        self.n, self.pris, self.prio_attente = n, 0, 0
+        self.cond = threading.Condition()
+
+    def __enter__(self):
+        prio = _article.get() in PRIORITAIRES
+        with self.cond:
+            if prio:
+                self.prio_attente += 1
+            try:
+                while self.pris >= self.n or (not prio and self.prio_attente):
+                    self.cond.wait()
+            finally:
+                if prio:
+                    self.prio_attente -= 1
+            self.pris += 1
+
+    def __exit__(self, *exc):
+        with self.cond:
+            self.pris -= 1
+            self.cond.notify_all()
+
 
 def limite(url):
     hote = urllib.parse.urlparse(url).hostname or ""
     with _verrou_sem:
         if hote not in _semaphores:
-            _semaphores[hote] = threading.BoundedSemaphore(LIMITES_SITES.get(hote, 3))
+            _semaphores[hote] = Limite(LIMITES_SITES.get(hote, 3))
         return _semaphores[hote]
 
 
@@ -279,9 +318,8 @@ def estimer(produit, complet=True):
     """
     import prix as px
     import fiche_tech as ft
-    from concurrent.futures import ThreadPoolExecutor
-
     t0 = time.time()
+    _article.set(produit["id"])
     prix = produit["prix"]
     bornes = px.bornes_pour(prix)
     ordi = est_ordinateur(produit)
@@ -300,7 +338,7 @@ def estimer(produit, complet=True):
     res = {"id": produit["id"], "mots_cles": tokens, "complet": complet}
     sources = None if complet else [k for k in px.SOURCES if k != "amazon"]
 
-    with ThreadPoolExecutor(3) as ex:
+    with Pool(3) as ex:
         f_det = ex.submit(details_produit, produit["url"]) if complet else None
         try:
             res["details"] = f_det.result() if f_det else {}
@@ -335,7 +373,7 @@ def estimer(produit, complet=True):
     if len(tokens) >= 2:
         for n, essai in enumerate(variantes_requete(tokens)):
             t_essai = texte if n == 0 else " ".join(essai)
-            with ThreadPoolExecutor(2) as ex:
+            with Pool(2) as ex:
                 f_occ = ex.submit(prix_occasion_reseau, produit["id"], produit["nom"], essai, exclure, bornes,
                                   produit.get("categorie") or None, verif, seuil)
                 f_b = ex.submit(px.comparer_boutiques, t_essai, essai, exclure, sources, bornes, verif, seuil,
