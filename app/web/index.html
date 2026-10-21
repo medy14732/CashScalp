@@ -29,7 +29,7 @@ header{position:sticky;top:0;z-index:5;background:linear-gradient(#0b0b0b 85%,#0
 .marque h1{font-size:23px;margin:0;font-weight:900;letter-spacing:.2px}
 .marque h1 span{color:var(--orange)}
 .marque p{margin:0;color:var(--mut);font-size:13px}
-form{display:grid;grid-template-columns:1.1fr 1.2fr 1.6fr .6fr auto;gap:10px;background:var(--panel);
+form{display:grid;grid-template-columns:1.1fr 1.2fr 1.5fr .9fr auto;gap:10px;background:var(--panel);
   padding:14px;border-radius:var(--r);border:1px solid var(--line)}
 label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--mut);font-weight:700;letter-spacing:.3px}
 select,input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;outline:none;min-width:0}
@@ -348,6 +348,16 @@ input::placeholder{color:#6f6f6f;font-weight:500}
 .tchoix,.onglet,.region-tete{font-weight:600}
 .pmag{font-weight:500}
 .segments button{font-weight:600}
+/* ---------- fourchette de prix, pertinence ---------- */
+.fourchette{display:flex;align-items:center;gap:6px} .fourchette input{flex:1;width:0}
+.fourchette span{color:var(--mut);font-weight:600}
+.pert{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pert.fiable{background:#1e3d2a;color:#9fe3b6} .pert.moyen{background:#3a2f12;color:#ffd58a} .pert.faible{background:#3a1d1d;color:#ffb0b0}
+.b.pert{box-shadow:0 2px 6px #0005}
+.gain.peu-fiable b{opacity:.6}
+.pert-fiche{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--mut)}
+.pert-fiche .pert{font-size:12px;padding:3px 10px}
+.etoiles{color:var(--orange);letter-spacing:1px;margin-left:4px;font-size:11px} .etoiles i{color:#555;font-style:normal}
 /* ---------- bons plans, vue liste, surveillance ---------- */
 .petit.bascule.actif{background:var(--vert);border-color:var(--vert);color:#062}
 .petit.fait{border-color:var(--vert);color:var(--vert);cursor:default}
@@ -406,7 +416,8 @@ input::placeholder{color:#6f6f6f;font-weight:500}
     <div class="champ">Où ?<button type="button" class="choix" id="choix-zone"></button><input type="hidden" id="zone"></div>
     <div class="champ">Quoi ?<button type="button" class="choix" id="choix-cat"></button><input type="hidden" id="cat"></div>
     <label>Que cherches-tu ? (facultatif)<input type="text" id="q" placeholder="ex. iphone 13, ps5, rtx 3060, macbook"></label>
-    <label>Prix max (€)<input type="text" id="pmax" placeholder="aucun" inputmode="decimal"></label>
+    <div class="champ">Prix (€)<div class="fourchette"><input type="text" id="pmin" placeholder="min" inputmode="decimal" aria-label="Prix minimum (€)">
+      <span>à</span><input type="text" id="pmax" placeholder="max" inputmode="decimal" aria-label="Prix maximum (€)"></div></div>
     <button class="go" id="go" type="submit">🔍 Rechercher</button>
     <div class="options">
       <label><input type="checkbox" id="nouveaux"> Seulement les nouveaux articles depuis ma dernière recherche</label>
@@ -469,7 +480,7 @@ let produits = [], jobId = null, estims = {}, ficheId = null;
 // ---------- préférences (confort local seulement) ----------
 function lirePrefs(){ try { return JSON.parse(localStorage.getItem("cashscalp") || "{}"); } catch { return {}; } }
 function ecrirePrefs(){ try { localStorage.setItem("cashscalp", JSON.stringify({zone: $("#zone").value, cat: $("#cat").value,
-  q: $("#q").value, pmax: $("#pmax").value, auto: $("#auto").checked, tri: $("#tri").value,
+  q: $("#q").value, pmin: $("#pmin").value, pmax: $("#pmax").value, auto: $("#auto").checked, tri: $("#tri").value,
   bons: $("#bons").classList.contains("actif"), liste: document.body.classList.contains("vue-liste")})); } catch {} }
 
 // ---------- sélecteurs visuels (où ? / quoi ?) ----------
@@ -562,7 +573,7 @@ async function init(){
     "ordinateurs-de-bureau": "164-ordinateurs-de-bureau", "telephonie": "136-gsm-gps-telephonie"};
   const voulu = cats.includes(p.cat) ? p.cat : anciens[p.cat];
   $("#cat").value = cats.includes(voulu) ? voulu : "2-categories";
-  $("#q").value = p.q || ""; $("#pmax").value = p.pmax || "";
+  $("#q").value = p.q || ""; $("#pmin").value = p.pmin || ""; $("#pmax").value = p.pmax || "";
   $("#auto").checked = p.auto !== false; $("#tri").value = ["affaire", "gain", "pa", "pd", "nouveau"].includes(p.tri) ? p.tri : "affaire";
   $("#bons").classList.toggle("actif", !!p.bons);
   document.body.classList.toggle("vue-liste", !!p.liste); majBoutonVue();
@@ -577,8 +588,9 @@ $("#form").onsubmit = async e => {
   $("#barre").style.display = "block"; $("#barre i").style.width = "3%";
   $("#msg").textContent = "Connexion à cashconverters.be…"; lotJob = null;
   const params = new URLSearchParams({zone: $("#zone").value, cat: $("#cat").value, q: $("#q").value,
-    pmax: $("#pmax").value, nouveaux: $("#nouveaux").checked ? "1" : "0"});
+    pmin: $("#pmin").value, pmax: $("#pmax").value, nouveaux: $("#nouveaux").checked ? "1" : "0"});
   derniereRecherche = {zone: $("#zone").value, cat: $("#cat").value, q: $("#q").value.trim(), pmax: $("#pmax").value.trim()};
+  if ($("#pmin").value.trim()) derniereRecherche.pmin = $("#pmin").value.trim();
   majBoutonSurveiller();
   try { jobId = (await (await fetch("/api/recherche?" + params)).json()).job; suivre(); }
   catch { fin("Impossible de joindre le moteur de l'application. Relance CashScalp."); }
@@ -603,7 +615,7 @@ function fin(msg){ $("#go").disabled = false; $("#go").innerHTML = "🔍 Recherc
 function resume(id){ const e = estims[id]; return e && e !== "calcul" ? (e.resume || {}) : null; }
 function valeurAffaire(p){
   const r = resume(p.id);
-  if (r && r.pct != null) return r.pct + ({excellent: 100, bon: 50}[r.note] || 0);
+  if (r && r.pct != null) return r.pct + ({excellent: 100, bon: 50}[r.note] || 0) - (r.pertinence === "faible" ? 150 : 0);
   return p.score ?? 0;
 }
 function liste(){
@@ -620,13 +632,20 @@ function liste(){
   return l;
 }
 const bonsSeulement = () => $("#bons").classList.contains("actif");
-function estBonPlan(p){ const r = resume(p.id); return !!r && r.gain != null && r.gain >= 1 && r.note !== "cher"; }
+function estBonPlan(p){ const r = resume(p.id); return !!r && r.gain != null && r.gain >= 1 && r.note !== "cher" && r.pertinence !== "faible"; }
+const PERT = {fiable: "✓ Prix fiable", moyen: "≈ Prix moyen", faible: "⚠ Prix peu fiable"};
+const PERT_AIDE = {fiable: "Prix de référence confirmé par des sites sérieux",
+  moyen: "Prix de référence plausible, mais peu confirmé : vérifie avant d'acheter",
+  faible: "Prix de référence douteux (site peu pertinent ou trop peu de prix) : ne t'y fie pas"};
+const pastille = n => n ? `<span class="pert ${n}" title="${PERT_AIDE[n]}">${PERT[n]}</span>` : "";
 function badges(p){
   let h = "";
   if (p.nouveau) h += `<span class="b nouveau">NOUVEAU</span>`;
   if (p.remise_pct > 0) h += `<span class="b solde">-${Math.round(p.remise_pct)}%</span>`;
   if (estims[p.id] === "calcul") h += `<span class="b calcul">estimation…</span>`;
   else { const r = resume(p.id); if (r?.note && r.note !== "inconnu") h += `<span class="b ${r.note}">${NOTES[r.note]}</span>`; }
+  const pe = resume(p.id)?.pertinence;
+  if (pe && estims[p.id] !== "calcul") h += `<span class="b pert ${pe}" title="${PERT_AIDE[pe]}">${PERT[pe]}</span>`;
   return h;
 }
 const VS = {occasion: "vs occasion", reconditionne: "vs reconditionné", neuf: "vs neuf",
@@ -639,14 +658,14 @@ function ligneGain(p){
   if (!r.base || r.gain == null) return `<div class="gain attente"><span>Pas de référence fiable</span></div>`;
   const neg = r.gain < 0, nul = Math.abs(r.gain) < 1;
   const valeur = nul ? "au prix du marché" : neg ? `${eur(-r.gain)} plus cher` : `${eur(r.gain)} d'économie`;
-  return `<div class="gain ${neg ? "neg" : nul ? "" : "pos"}"><span>${VS[r.base] || ""}</span><b>${valeur}</b></div>`;
+  return `<div class="gain ${neg ? "neg" : nul ? "" : "pos"} ${r.pertinence === "faible" ? "peu-fiable" : ""}"><span>${VS[r.base] || ""}</span><b>${valeur}</b></div>`;
 }
 function ligneRevente(p){
   const r = resume(p.id);
   if (!r || r.base !== "occasion" || !r.ref) return "";
   const m = r.gain, neg = m < 0, nul = Math.abs(m) < 1;
   const marge = nul ? "pas de marge" : neg ? `−${eur(Math.round(-m))} perte` : `+${eur(Math.round(m))} marge`;
-  return `<div class="gain revente ${neg ? "neg" : nul ? "" : "pos"}" title="Prix d'occasion habituel de ce modèle : ce que tu peux espérer en le revendant">
+  return `<div class="gain revente ${neg ? "neg" : nul ? "" : "pos"} ${r.pertinence === "faible" ? "peu-fiable" : ""}" title="Prix d'occasion habituel de ce modèle : ce que tu peux espérer en le revendant">
     <span>Revente ≈ <i>${eur(r.ref)}</i></span><b>${marge}</b></div>`;
 }
 function carte(p, i = 0){
@@ -701,7 +720,7 @@ $("#vue").onclick = () => { document.body.classList.toggle("vue-liste"); majBout
 
 // ---------- surveillance ----------
 let derniereRecherche = null, surveillances = [];
-const idSurv = r => JSON.stringify([r.zone, r.cat, r.q, r.pmax]);
+const idSurv = r => JSON.stringify([r.zone, r.cat, r.q, r.pmin || "", r.pmax]);
 function poserSurveillances(l){
   surveillances = l;
   $("#nb-veille").textContent = l.length; $("#nb-veille").hidden = !l.length;
@@ -717,7 +736,8 @@ function majBoutonSurveiller(){
 }
 function nomRecherche(r){
   const z = infoZone(r.zone)[1], c = infoCat(r.cat)[1];
-  return [r.q ? `« ${r.q} »` : c, z, r.pmax ? `≤ ${r.pmax} €` : ""].filter(Boolean).join(" · ");
+  const prix = r.pmin && r.pmax ? `${r.pmin} à ${r.pmax} €` : r.pmin ? `≥ ${r.pmin} €` : r.pmax ? `≤ ${r.pmax} €` : "";
+  return [r.q ? `« ${r.q} »` : c, z, prix].filter(Boolean).join(" · ");
 }
 $("#surveiller").onclick = async () => {
   const r = derniereRecherche;
@@ -1003,8 +1023,15 @@ function blocVerdict(p, e){
       <div class="anneau" style="--p:${score};--c:${coul}"><span style="color:${coul}">${v.pct == null ? "?" : (v.pct >= 0 ? "-" : "+") + Math.round(Math.abs(v.pct)) + "%"}</span></div>
       <div><div class="t" style="color:${coul}">${NOTES[v.note] || NOTES.inconnu}</div><div class="s">${phrase}</div></div>
     </div>
+    ${blocPertinence(e)}
     ${echelle(p, e)}
   </div>`;
+}
+function blocPertinence(e){
+  const pe = e.pertinence;
+  if (!pe || !pe.niveau) return "";
+  return `<div class="pert-fiche">Fiabilité du prix de référence : ${pastille(pe.niveau)}
+    <span>${esc(pe.raisons.join(" · "))}${pe.source ? ` (${esc(pe.source)})` : ""}</span></div>`;
 }
 
 function echelle(p, e){
@@ -1047,8 +1074,10 @@ function blocBoutiques(p, e){
       : esc(b.nom || "") + (b.nb_boutiques > 1 ? ` · prix le plus bas parmi ${b.nb_boutiques} boutiques` : "");
     const url = b.url || b.recherche || (b.exemples?.[0]?.url) || "#";
     const fiab = b.type === "occasion" && b.fiabilite && retenue ? `<span class="tag ${FIAB[b.fiabilite][1]}">${FIAB[b.fiabilite][0]}</span>` : "";
+    const n = b.pertinence || 1;
+    const etoiles = `<span class="etoiles" title="Pertinence du site : ${["", "peu pertinent", "correct", "sérieux"][n]}">${"★".repeat(n)}<i>${"★".repeat(3 - n)}</i></span>`;
     return `<a class="offre ${retenue ? "" : "ecartee"}" href="${esc(url)}" target="_blank" rel="noopener">${logo(b.cle)}
-      <div style="min-width:0"><div class="n">${esc(b.source.replace(" · même configuration", ""))} <span class="tag ${b.type}">${b.type === "reconditionne" ? "reconditionné" : b.type}</span>${b.meme_cpu ? `<span class="tag cpu">même configuration</span>` : ""}${fiab}</div>
+      <div style="min-width:0"><div class="n">${esc(b.source.replace(" · même configuration", ""))} ${etoiles} <span class="tag ${b.type}">${b.type === "reconditionne" ? "reconditionné" : b.type}</span>${b.meme_cpu ? `<span class="tag cpu">même configuration</span>` : ""}${fiab}</div>
       <div class="d" title="${esc(b.nom || "")}">${detail}${pourquoi ? ` · <em>${pourquoi}</em>` : ""}</div></div>
       <div class="p">${b.type === "occasion" ? `<span class="mini">prix médian</span>` : ""}${eur(b.ref)}<small class="${plus ? "pos" : "neg"}">${plus ? eur(diff) + " d'économie" : eur(-diff) + " moins cher"}</small></div></a>`;
   }).join("");

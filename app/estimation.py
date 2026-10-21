@@ -195,7 +195,7 @@ def prix_occasion_reseau(id_produit, nom, requete=None, exclure=None, bornes=Non
     import prix as px
     st = px.stats_robustes(prix)
     st["exemples"] = sorted([e for e in exemples if st["min"] <= e["prix"] <= st["max"]], key=lambda e: e["prix"])[:5]
-    st["_offres"] = [{**e, "source": "Cash Converters"} for e in exemples]
+    st["_offres"] = [{**e, "source": "Cash Converters", "cle": "cashconverters"} for e in exemples]
     return st
 
 
@@ -376,28 +376,33 @@ def estimer(produit, complet=True):
     # 3) PC fixe : chiffrage pièce par pièce
     res["composants"] = px.chiffrer_pc(produit, texte_complet) if px.est_pc_fixe(produit, texte_complet) else None
 
+    for l in lignes:
+        l.setdefault("pertinence", px.pertinence_site(l.get("cle")))
+
     # références retenues pour le verdict : même modèle d'abord, puis même processeur
-    refs = {}
+    refs, choisies = {}, {}
     # une référence d'occasion ne compte que si elle est fiable : au moins 2 annonces aux prix cohérents
     occ_ok = [l for l in lignes if l["type"] == "occasion" and l.get("mediane") and l.get("nb", 0) >= 2
               and l.get("fiabilite") != "faible" and not l.get("approx")]
     # ordre : même modèle exact, puis même processeur, puis modèle proche
     # le « marché » (tous sites réunis) passe avant une source seule, à fiabilité égale
     rang_fiab = {"elevee": 0, "moyenne": 1}
-    occ_ok.sort(key=lambda l: (l.get("approx", False), bool(l.get("meme_cpu")), rang_fiab.get(l.get("fiabilite"), 2),
-                               not l.get("marche"), -l.get("nb", 0)))
+    occ_ok.sort(key=lambda l: (l.get("approx", False), bool(l.get("meme_cpu")), -l["pertinence"],
+                               rang_fiab.get(l.get("fiabilite"), 2), not l.get("marche"), -l.get("nb", 0)))
     if occ_ok:
         refs["occasion"] = occ_ok[0]["mediane"]
+        choisies["occasion"] = occ_ok[0]
         res["base_occasion"] = {"source": occ_ok[0]["source"], "meme_cpu": occ_ok[0].get("meme_cpu"),
                                 "approx": occ_ok[0].get("approx", False), "nb": occ_ok[0]["nb"],
                                 "min": occ_ok[0]["min"], "max": occ_ok[0]["max"],
                                 "fiabilite": occ_ok[0].get("fiabilite"), "sites": occ_ok[0].get("sites")}
-    rec = [l["prix"] for l in lignes if l["type"] == "reconditionne" and l.get("prix") and not l.get("approx")]
-    if rec:
-        refs["reconditionne"] = min(rec)
-    neuf = [l["prix"] for l in lignes if l["type"] == "neuf" and l.get("prix") and not l.get("approx")]
-    if neuf:
-        refs["neuf"] = min(neuf)
+    for type_ in ("reconditionne", "neuf"):
+        # le prix le plus bas, mais seulement parmi les sites les plus sérieux qui ont le produit
+        l_t = [l for l in lignes if l["type"] == type_ and l.get("prix") and not l.get("approx")]
+        if l_t:
+            meilleure = max(l["pertinence"] for l in l_t)
+            choisies[type_] = min((l for l in l_t if l["pertinence"] == meilleure), key=lambda l: l["prix"])
+            refs[type_] = choisies[type_]["prix"]
     if res["composants"]:          # un total incomplet fausserait le verdict : on l'écarte
         if res["composants"]["complet_occasion"]:
             refs["pieces_occasion"] = res["composants"]["total_occasion"]
@@ -406,6 +411,7 @@ def estimer(produit, complet=True):
     res["gains"] = {k: {"ref": v, "gain": round(v - prix, 2), "pct": round((1 - prix / v) * 100, 1)}
                     for k, v in refs.items() if v and v > 0}
     res["verdict"] = verdict(res["gains"])
+    res["pertinence"] = pertinence(res["verdict"].get("base"), choisies, lignes, res["composants"])
     for l in res["boutiques"]:
         l.pop("_offres", None)
     if res.get("occasion"):
@@ -428,6 +434,55 @@ def verdict(gains):
                     return {"note": note, "base": base, "pct": p}
             return {"note": "cher", "base": base, "pct": p}
     return {"note": "inconnu", "base": None}
+
+
+def pertinence(base, choisies, lignes, composants=None):
+    """Peut-on se fier au gain affiché ? Selon le sérieux du site, le nombre d'annonces
+    et l'accord avec d'autres sites. Renvoie {niveau: fiable|moyen|faible, raisons: [...]}."""
+    if not base:
+        return {"niveau": None, "raisons": []}
+    if base.startswith("pieces"):
+        return {"niveau": "moyen" if composants and composants.get("complet_occasion") else "faible",
+                "raisons": ["estimation pièce par pièce, à vérifier"]}
+    ref = choisies[base]
+    valeur = ref.get("mediane") or ref["prix"]
+    raisons, points = [], ref["pertinence"]
+    if not ref.get("marche"):
+        raisons.append({3: "site sérieux", 2: "site correct"}.get(ref["pertinence"], "site peu pertinent"))
+    # autres sites sérieux qui donnent à peu près le même prix (à 25 % près)
+    accord = {l["source"] for l in lignes
+              if l is not ref and l["type"] == ref["type"] and l["pertinence"] >= 2 and not l.get("approx")
+              and l.get("cle") != ref.get("cle") and (l.get("mediane") or l.get("prix"))
+              and abs((l.get("mediane") or l["prix"]) - valeur) <= 0.25 * valeur}
+    if ref.get("marche"):          # le marché réunit déjà plusieurs sites : ce sont eux qui confirment
+        accord = set(ref.get("sites") or [])
+    if ref.get("marche"):
+        points += 2 if len(accord) >= 3 else 1
+        raisons.append(f"{len(accord)} sites réunis" + (" dont Cash Converters" if ref["pertinence"] >= 3 else ""))
+    elif len(accord) >= 2:
+        points += 2
+        raisons.append(f"confirmé par {len(accord)} sites")
+    elif accord:
+        points += 1
+        raisons.append("confirmé par 1 autre site")
+    else:
+        raisons.append("aucun autre site ne confirme")
+    if ref["type"] == "occasion":
+        nb = ref.get("nb", 0)
+        points += 2 if nb >= 5 else 1 if nb >= 3 else 0
+        raisons.append(f"{nb} annonce{'s' if nb > 1 else ''}")
+        if ref.get("fiabilite") == "elevee":
+            points += 1
+        elif ref.get("fiabilite") == "faible":
+            points -= 2
+            raisons.append("prix très dispersés")
+        if ref.get("meme_cpu"):
+            points -= 1
+            raisons.append("même configuration, pas le même modèle")
+        niveau = "fiable" if points >= 7 else "moyen" if points >= 4 else "faible"
+    else:
+        niveau = "fiable" if points >= 4 else "moyen" if points >= 3 else "faible"
+    return {"niveau": niveau, "raisons": raisons, "source": ref["source"]}
 
 
 if __name__ == "__main__":
