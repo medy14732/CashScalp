@@ -15,10 +15,10 @@ import time
 import unicodedata
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 
 from cashscalp import lire
 from estimation import ACCESSOIRES, MARQUEUR_RECOND, VARIANTES, _canon, UA, limite
+from estimation import Pool as ThreadPoolExecutor   # garde la priorité de la fiche ouverte
 
 _cache = {}
 _verrou = threading.Lock()
